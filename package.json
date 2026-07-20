@@ -1,0 +1,8 @@
+{
+  "name": "musterhub-command",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "src/musterhub-command-web"
+  ]
+}

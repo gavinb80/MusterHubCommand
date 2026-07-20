@@ -1,0 +1,72 @@
+/*
+ * Tailwind v4 theme, generated from the same values as colors.ts /
+ * typography.ts / card.ts -- kept in sync by hand, same convention as
+ * Rota/Skills' own design-tokens packages.
+ */
+
+:root {
+  --surface-page: #F5F6FA;
+  --surface: #FFFFFF;
+  --surface-alt: #EEF1F6;
+  --surface-border: #E3E7ED;
+  --content-primary: #15202B;
+  --content-secondary: #67727E;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-page: #0A0E14;
+    --surface: #141A24;
+    --surface-alt: #1C2430;
+    --surface-border: #232B38;
+    --content-primary: #F5F7FA;
+    --content-secondary: #8B97A8;
+  }
+}
+
+:root[data-theme="light"] {
+  --surface-page: #F5F6FA;
+  --surface: #FFFFFF;
+  --surface-alt: #EEF1F6;
+  --surface-border: #E3E7ED;
+  --content-primary: #15202B;
+  --content-secondary: #67727E;
+}
+
+:root[data-theme="dark"] {
+  --surface-page: #0A0E14;
+  --surface: #141A24;
+  --surface-alt: #1C2430;
+  --surface-border: #232B38;
+  --content-primary: #F5F7FA;
+  --content-secondary: #8B97A8;
+}
+
+@theme {
+  --color-brand-primary: #C8102E;
+  --color-brand-primary-dark: #FF3B30;
+  --color-brand-secondary: #0B1F3A;
+  --color-brand-tertiary: #1B3358;
+
+  --color-status-open: #FF9F0A;
+  --color-status-closed: #8E8E93;
+  --color-status-cancelled: #8E8E93;
+  --color-status-mobilised: #0A84FF;
+  --color-status-en-route: #FF9F0A;
+  --color-status-on-scene: #34C759;
+  --color-status-stood-down: #8E8E93;
+  --color-status-hazard: #FF453A;
+
+  --font-base: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --text-headline: 32px;
+  --text-subheadline: 24px;
+  --text-page-title: 28px;
+  --text-card-title: 16px;
+  --text-body: 14px;
+  --text-card-subtitle: 13px;
+  --text-caption: 12px;
+
+  --radius-card: 16px;
+  --shadow-card: 0 6px 14px 0 rgb(0 0 0 / 0.18);
+}

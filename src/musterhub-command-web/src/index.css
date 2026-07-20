@@ -1,0 +1,19 @@
+@import "tailwindcss";
+@import "@musterhub/command-design-tokens/theme.css";
+@import "leaflet/dist/leaflet.css";
+
+body {
+  margin: 0;
+  font-family: var(--font-base);
+  background-color: var(--surface-page);
+  color: var(--content-primary);
+}
+
+/* Leaflet's own CSS assumes it can size itself from a parent with an
+   explicit height -- every map mount in this app supplies one via a
+   Tailwind height utility, this just keeps the tile layer from rendering
+   as a 0-height sliver if that's ever missed. */
+.leaflet-container {
+  min-height: 240px;
+  border-radius: var(--radius-card);
+}
