@@ -2,6 +2,7 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Tokens;
 using MusterHubCommand.Api.Configuration;
@@ -39,6 +40,14 @@ builder.Services.AddScoped<IntegrationApiKeyValidator>();
 
 builder.Services.AddScoped<CoreDirectoryImportService>();
 builder.Services.AddHttpClient<ICoreDirectoryClient, HttpCoreDirectoryClient>();
+
+builder.Services.AddHttpClient<CoreNotificationService>((sp, client) =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5); // best-effort: never hold up incident creation
+    var options = sp.GetRequiredService<IOptions<CoreAuthOptions>>().Value;
+    if (!string.IsNullOrWhiteSpace(options.NotificationApiKey))
+        client.DefaultRequestHeaders.Add("X-Api-Key", options.NotificationApiKey);
+});
 builder.Services.AddScoped<DirectorySyncJob>();
 
 builder.Services.Configure<CoreAuthOptions>(builder.Configuration.GetSection(CoreAuthOptions.SectionName));

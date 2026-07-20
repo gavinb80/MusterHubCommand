@@ -22,6 +22,7 @@ public class ApplicationDbContext(
     public DbSet<IncidentAppliance> IncidentAppliances => Set<IncidentAppliance>();
     public DbSet<IncidentUpdate> IncidentUpdates => Set<IncidentUpdate>();
     public DbSet<IntegrationApiKey> IntegrationApiKeys => Set<IntegrationApiKey>();
+    public DbSet<EmployeeStationAssignment> EmployeeStationAssignments => Set<EmployeeStationAssignment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -86,6 +87,13 @@ public class ApplicationDbContext(
         modelBuilder.Entity<IntegrationApiKey>(e =>
         {
             e.HasIndex(k => k.KeyHash).IsUnique();
+        });
+
+        modelBuilder.Entity<EmployeeStationAssignment>(e =>
+        {
+            e.HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(a => a.OrgUnit).WithMany().HasForeignKey(a => a.OrgUnitId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(a => new { a.EmployeeId, a.OrgUnitId }).IsUnique();
         });
 
         // Tenant isolation, default-deny: every ITenantScoped entity gets

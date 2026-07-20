@@ -16,7 +16,7 @@ public class IncidentValidationException(string message) : Exception(message);
 // off ICurrentOrganisationAccessor, since IntegrationIncidentsController is
 // [AllowAnonymous] -- there is no ambient organisation until the caller's
 // API key has already resolved one.
-public class IncidentService(ApplicationDbContext db)
+public class IncidentService(ApplicationDbContext db, CoreNotificationService notificationService)
 {
     public Task<Incident?> FindByExternalReferenceAsync(Guid organisationId, string externalReference, CancellationToken ct = default) =>
         Query(organisationId).FirstOrDefaultAsync(i => i.ExternalReference == externalReference, ct);
@@ -74,6 +74,14 @@ public class IncidentService(ApplicationDbContext db)
         db.Incidents.Add(incident);
         await db.SaveChangesAsync(ct);
         incident.OrgUnit = await LoadOrgUnitAsync(stationId, ct);
+
+        // Only ever fires for a genuinely new incident, never the upsert-
+        // existing branch above -- re-pushing an update from Vision (a
+        // status change, an amended address) must not re-page the whole
+        // crew's phones every time.
+        await notificationService.NotifyStationEmployeesAsync(
+            organisationId, stationId, $"New incident: {incident.IncidentType}", incident.Address ?? incident.OrgUnit?.Name ?? "");
+
         return incident;
     }
 

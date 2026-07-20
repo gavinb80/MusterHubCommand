@@ -6,10 +6,10 @@ namespace MusterHubCommand.Api.Services;
 // Command's own copy of core's DirectoryExport contracts -- deliberately not
 // a shared project reference, same as the JWT trust boundary: the two
 // codebases integrate over a wire format, never over each other's types.
-// Only Groups/Stations/Users are pulled in -- Command has no use for core's
-// Appliances or station memberships (the web console's Control Room
-// Operator role is org-wide, not station-scoped, so per-employee station
-// assignment isn't needed for V1).
+// Groups/Stations/Users/station memberships are pulled in, same shape as
+// Rota/Skills' own copy -- station membership is what lets the
+// new-incident push know which crew's phones to notify. Core's own
+// Appliances aren't pulled in; Command has no use for them.
 public record CoreDirectory(
     Guid ServiceId,
     string ServiceName,
@@ -21,7 +21,9 @@ public record CoreGroup(Guid Id, string Name);
 
 public record CoreStation(Guid Id, string Code, string Name, Guid GroupId);
 
-public record CoreUser(Guid Id, string FullName, string Rank, string? EmployeeNumber);
+public record CoreUser(Guid Id, string FullName, string Rank, string? EmployeeNumber, List<CoreUserStation> Stations);
+
+public record CoreUserStation(Guid StationId, bool IsHome);
 
 // Interface so the import's upsert logic is testable against a canned
 // payload without a running core instance.

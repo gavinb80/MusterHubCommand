@@ -5,8 +5,8 @@ namespace MusterHubCommand.Api.Configuration;
 // core's private signing key, only where to fetch its public JWKS and which
 // issuer/audience to expect. The tablet app is deliberately NOT part of this
 // -- it authenticates with its own long-lived Device token instead (see
-// Services/DeviceAuthHandler.cs), which has no relationship to core's JWT
-// chain at all.
+// Services/DeviceAuthenticationHandler.cs), which has no relationship to
+// core's JWT chain at all.
 public class CoreAuthOptions
 {
     public const string SectionName = "Core";

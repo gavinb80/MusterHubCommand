@@ -9,7 +9,8 @@ public record CoreDirectoryImportSummary(
     int UnitsCreated,
     int UnitsUpdated,
     int EmployeesCreated,
-    int EmployeesUpdated);
+    int EmployeesUpdated,
+    int StationMembershipsChanged);
 
 // One-way, idempotent import of core's directory into Command: Groups and
 // Stations become OrgUnits (typed Group > Station, mirroring core's own
@@ -70,10 +71,11 @@ public class CoreDirectoryImportService(ApplicationDbContext db, ICoreDirectoryC
         foreach (var group in directory.Groups)
             groupUnitsByCoreId[group.Id] = Upsert(group.Id, group.Name, code: null, groupType.Id, parentId: null);
 
+        var stationUnitsByCoreId = new Dictionary<Guid, OrgUnit>();
         foreach (var station in directory.Stations)
         {
             var parent = groupUnitsByCoreId.GetValueOrDefault(station.GroupId);
-            Upsert(station.Id, station.Name, station.Code, stationType.Id, parent?.Id);
+            stationUnitsByCoreId[station.Id] = Upsert(station.Id, station.Name, station.Code, stationType.Id, parent?.Id);
         }
 
         // Parent-first save so OrgUnitPathInterceptor can resolve new
@@ -81,7 +83,8 @@ public class CoreDirectoryImportService(ApplicationDbContext db, ICoreDirectoryC
         await db.SaveChangesAsync(cancellationToken);
 
         var employees = await db.Employees.ToListAsync(cancellationToken);
-        int employeesCreated = 0, employeesUpdated = 0;
+        var assignments = await db.EmployeeStationAssignments.ToListAsync(cancellationToken);
+        int employeesCreated = 0, employeesUpdated = 0, membershipsChanged = 0;
 
         foreach (var user in directory.Users)
         {
@@ -109,6 +112,48 @@ public class CoreDirectoryImportService(ApplicationDbContext db, ICoreDirectoryC
                     employeesUpdated++;
                 }
             }
+
+            // Replace-whole per employee, not date-ranged like Rota/Skills:
+            // Command only ever needs "who is at this station right now" for
+            // the new-incident push, so a membership core no longer reports
+            // is removed outright rather than left to linger -- paging
+            // someone at a station they've transferred away from is a real
+            // operational cost, not just stale data.
+            var wanted = user.Stations
+                .Select(m => (Unit: stationUnitsByCoreId.GetValueOrDefault(m.StationId), m.IsHome))
+                .Where(m => m.Unit is not null)
+                .ToList();
+
+            var current = assignments.Where(a => a.EmployeeId == employee.Id).ToList();
+            foreach (var stale in current.Where(a => wanted.All(w => w.Unit!.Id != a.OrgUnitId)))
+            {
+                db.EmployeeStationAssignments.Remove(stale);
+                assignments.Remove(stale);
+                membershipsChanged++;
+            }
+
+            foreach (var (unit, isHome) in wanted)
+            {
+                var existing = current.FirstOrDefault(a => a.OrgUnitId == unit!.Id);
+                if (existing is null)
+                {
+                    var assignment = new EmployeeStationAssignment
+                    {
+                        OrganisationId = organisationId,
+                        EmployeeId = employee.Id,
+                        OrgUnitId = unit!.Id,
+                        IsHome = isHome,
+                    };
+                    db.EmployeeStationAssignments.Add(assignment);
+                    assignments.Add(assignment);
+                    membershipsChanged++;
+                }
+                else if (existing.IsHome != isHome)
+                {
+                    existing.IsHome = isHome;
+                    membershipsChanged++;
+                }
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -116,7 +161,8 @@ public class CoreDirectoryImportService(ApplicationDbContext db, ICoreDirectoryC
         return new CoreDirectoryImportSummary(
             directory.ServiceName,
             unitsCreated, unitsUpdated,
-            employeesCreated, employeesUpdated);
+            employeesCreated, employeesUpdated,
+            membershipsChanged);
     }
 
     private async Task<OrgUnitType> GetOrCreateTypeAsync(
