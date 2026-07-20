@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <!-- Same MusterHub brand palette as the main app and the control-room
+         web console's own design tokens. -->
+    <Color x:Key="Primary">#C8102E</Color>
+    <Color x:Key="PrimaryDark">#FF3B30</Color>
+    <Color x:Key="Secondary">#0B1F3A</Color>
+
+    <Color x:Key="White">White</Color>
+    <Color x:Key="Black">Black</Color>
+
+    <Color x:Key="Gray200">#C8C8C8</Color>
+    <Color x:Key="Gray300">#ACACAC</Color>
+    <Color x:Key="Gray400">#919191</Color>
+    <Color x:Key="Gray600">#404040</Color>
+    <Color x:Key="Gray900">#212121</Color>
+
+    <Color x:Key="PageBackgroundLight">#F5F6FA</Color>
+    <Color x:Key="PageBackgroundDark">#0A0E14</Color>
+
+    <Color x:Key="SurfaceLight">#FFFFFF</Color>
+    <Color x:Key="SurfaceDark">#141A24</Color>
+
+    <Color x:Key="BorderLight">#E3E7ED</Color>
+    <Color x:Key="BorderDark">#232B38</Color>
+
+    <Color x:Key="TextPrimaryLight">#15202B</Color>
+    <Color x:Key="TextPrimaryDark">#F5F7FA</Color>
+
+    <Color x:Key="TextSecondaryLight">#67727E</Color>
+    <Color x:Key="TextSecondaryDark">#8B97A8</Color>
+
+    <!-- Incident/appliance status colours - same values as
+         @musterhub/command-design-tokens' colors.ts, so the tablet and the
+         web console read identically. -->
+    <Color x:Key="StatusOpen">#FF9F0A</Color>
+    <Color x:Key="StatusClosed">#8E8E93</Color>
+    <Color x:Key="StatusMobilised">#0A84FF</Color>
+    <Color x:Key="StatusEnRoute">#FF9F0A</Color>
+    <Color x:Key="StatusOnScene">#34C759</Color>
+    <Color x:Key="StatusStoodDown">#8E8E93</Color>
+    <Color x:Key="StatusHazard">#FF453A</Color>
+
+</ResourceDictionary>

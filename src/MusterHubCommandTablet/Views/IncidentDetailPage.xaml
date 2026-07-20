@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="MusterHubCommandTablet.Views.IncidentDetailPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
+    xmlns:models="clr-namespace:MusterHubCommandTablet.Models"
+    x:DataType="vm:IncidentDetailViewModel"
+    Shell.NavBarIsVisible="False">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="16">
+
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" Text="&#8592; Back" Style="{StaticResource SecondaryButton}" Command="{Binding GoBackCommand}" />
+                <Border Grid.Column="2" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Incident.Status, Converter={StaticResource StatusToColorConverter}}" VerticalOptions="Center">
+                    <Label Text="{Binding Incident.Status}" Style="{StaticResource StatusPillLabel}" />
+                </Border>
+            </Grid>
+
+            <Label Text="{Binding Incident.IncidentType}" Style="{StaticResource PageTitleLabel}" />
+            <Label Text="{Binding Incident.Address}" Style="{StaticResource CardSubtitleLabel}" />
+            <Label Text="{Binding Incident.Description}" IsVisible="{Binding Incident.Description, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+
+            <WebView
+                Source="{Binding MapSource}"
+                IsVisible="{Binding HasLocation}"
+                HeightRequest="280" />
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Attendance" Style="{StaticResource CardTitleLabel}" />
+                    <Label Text="No appliances attending yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Incident.Appliances, Converter={StaticResource CollectionEmptyConverter}}" />
+                    <CollectionView ItemsSource="{Binding Incident.Appliances}" SelectionMode="None">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:IncidentApplianceDto">
+                                <Grid ColumnDefinitions="*,Auto" Padding="0,4">
+                                    <Label Grid.Column="0" Text="{Binding Callsign}" FontAttributes="Bold" VerticalOptions="Center" />
+                                    <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}">
+                                        <Label Text="{Binding Status}" Style="{StaticResource StatusPillLabel}" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Timeline" Style="{StaticResource CardTitleLabel}" />
+
+                    <CollectionView ItemsSource="{Binding Incident.Updates}" SelectionMode="None">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:IncidentUpdateDto">
+                                <Border StrokeThickness="0" StrokeShape="RoundRectangle 10" Padding="12,8" Margin="0,0,0,8"
+                                        BackgroundColor="{Binding UpdateType, Converter={StaticResource HazardToBackgroundConverter}}">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding Text}" />
+                                        <Label Style="{StaticResource CaptionLabel}">
+                                            <Label.FormattedText>
+                                                <FormattedString>
+                                                    <Span Text="{Binding Source}" />
+                                                    <Span Text=" &#183; " />
+                                                    <Span Text="{Binding CreatedAtUtc, StringFormat='{0:g}'}" />
+                                                </FormattedString>
+                                            </Label.FormattedText>
+                                        </Label>
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <Editor Placeholder="Add a note..." Text="{Binding NoteText}" AutoSize="TextChanges" MaxLength="1000" />
+                    <Button Text="Post note" Command="{Binding AddNoteCommand}" IsEnabled="{Binding IsPostingNote, Converter={StaticResource InvertedBoolConverter}}" HorizontalOptions="Start" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Label
+                Text="{Binding ErrorMessage}"
+                TextColor="{StaticResource StatusHazard}"
+                IsVisible="{Binding HasError}" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="MusterHubCommandTablet.Views.PairingPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
+    x:DataType="vm:PairingViewModel"
+    Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="*,Auto,*" ColumnDefinitions="*,Auto,*">
+
+        <VerticalStackLayout Grid.Row="1" Grid.Column="1" Spacing="20" WidthRequest="420" Padding="24">
+
+            <Label Text="MusterHub" TextColor="{StaticResource Secondary}" FontSize="20" HorizontalOptions="Center" />
+            <Label Text="Command" TextColor="{StaticResource Primary}" FontSize="34" FontAttributes="Bold" HorizontalOptions="Center" />
+
+            <Label Text="Pair this tablet" Style="{StaticResource CardTitleLabel}" HorizontalOptions="Center" Margin="0,20,0,0" />
+            <Label
+                Text="Enter the pairing code shown once when this tablet was registered in Setup &gt; Devices."
+                Style="{StaticResource CardSubtitleLabel}"
+                HorizontalTextAlignment="Center" />
+
+            <Entry
+                Placeholder="Pairing code"
+                Text="{Binding PairingCode}"
+                IsSpellCheckEnabled="False"
+                IsTextPredictionEnabled="False" />
+
+            <Label
+                Text="{Binding ErrorMessage}"
+                TextColor="{StaticResource StatusHazard}"
+                IsVisible="{Binding HasError}"
+                HorizontalTextAlignment="Center" />
+
+            <Button
+                Text="Pair device"
+                Command="{Binding PairCommand}"
+                IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+
+        </VerticalStackLayout>
+
+    </Grid>
+</ContentPage>
