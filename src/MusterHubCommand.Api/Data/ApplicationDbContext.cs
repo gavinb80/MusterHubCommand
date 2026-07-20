@@ -18,6 +18,10 @@ public class ApplicationDbContext(
     public DbSet<CoreDirectorySyncConfig> CoreDirectorySyncConfigs => Set<CoreDirectorySyncConfig>();
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<CommandOperator> CommandOperators => Set<CommandOperator>();
+    public DbSet<Incident> Incidents => Set<Incident>();
+    public DbSet<IncidentAppliance> IncidentAppliances => Set<IncidentAppliance>();
+    public DbSet<IncidentUpdate> IncidentUpdates => Set<IncidentUpdate>();
+    public DbSet<IntegrationApiKey> IntegrationApiKeys => Set<IntegrationApiKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -66,6 +70,22 @@ public class ApplicationDbContext(
         {
             e.HasOne(o => o.Employee).WithMany().HasForeignKey(o => o.EmployeeId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(o => o.EmployeeId).IsUnique();
+        });
+
+        modelBuilder.Entity<Incident>(e =>
+        {
+            // Unique per organisation, not globally: two different services'
+            // Vision instances could plausibly reuse the same incident
+            // number scheme.
+            e.HasIndex(i => new { i.OrganisationId, i.ExternalReference }).IsUnique();
+            e.HasOne(i => i.OrgUnit).WithMany().HasForeignKey(i => i.OrgUnitId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(i => i.Appliances).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(i => i.Updates).WithOne(u => u.Incident).HasForeignKey(u => u.IncidentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IntegrationApiKey>(e =>
+        {
+            e.HasIndex(k => k.KeyHash).IsUnique();
         });
 
         // Tenant isolation, default-deny: every ITenantScoped entity gets

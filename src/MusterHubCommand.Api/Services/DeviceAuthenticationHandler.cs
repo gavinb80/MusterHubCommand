@@ -40,7 +40,7 @@ public class DeviceAuthenticationHandler(
         var token = header["Bearer ".Length..].Trim();
         if (token.Length == 0) return AuthenticateResult.Fail("Empty device token.");
 
-        var hash = DeviceTokenHasher.Hash(token);
+        var hash = SecretHasher.Hash(token);
         // IgnoreQueryFilters: the tenant filter itself depends on
         // OrganisationId, which is exactly what resolving this device tells
         // us -- there's no organisation in scope yet at this point.

@@ -17,7 +17,13 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Sentry:Dsn"]))
     builder.WebHost.UseSentry();
 }
 
-builder.Services.AddControllers();
+// String enums, not ordinal ints: unlike the rest of this codebase's
+// internal APIs, IntegrationIncidentsController is a contract external
+// teams (Vision) integrate against directly -- "OnScene" surviving a future
+// reordering of ApplianceStatus is worth the wire-format inconsistency with
+// Rota/Skills' own int-enum convention.
+builder.Services.AddControllers()
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 
 builder.Services.AddSingleton<OrgUnitPathInterceptor>();
@@ -28,6 +34,8 @@ builder.Services.AddDbContext<ApplicationDbContext>((services, options) =>
 builder.Services.AddScoped<ICurrentOrganisationAccessor, HttpContextCurrentOrganisationAccessor>();
 builder.Services.AddScoped<ICurrentEmployeeAccessor, HttpContextCurrentEmployeeAccessor>();
 builder.Services.AddScoped<OperatorPermissionChecker>();
+builder.Services.AddScoped<IncidentService>();
+builder.Services.AddScoped<IntegrationApiKeyValidator>();
 
 builder.Services.AddScoped<CoreDirectoryImportService>();
 builder.Services.AddHttpClient<ICoreDirectoryClient, HttpCoreDirectoryClient>();

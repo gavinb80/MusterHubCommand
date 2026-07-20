@@ -36,13 +36,13 @@ public class DevicesController(
         if (!await db.OrgUnits.AnyAsync(u => u.Id == request.OrgUnitId))
             return BadRequest("OrgUnitId does not reference an existing station.");
 
-        var token = DeviceTokenHasher.GenerateToken();
+        var token = SecretHasher.GenerateToken();
         var device = new Device
         {
             OrganisationId = OrganisationId,
             OrgUnitId = request.OrgUnitId,
             Label = request.Label.Trim(),
-            TokenHash = DeviceTokenHasher.Hash(token),
+            TokenHash = SecretHasher.Hash(token),
         };
         db.Devices.Add(device);
         await db.SaveChangesAsync();
