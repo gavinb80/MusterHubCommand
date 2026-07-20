@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Local-only secrets -- never commit real connection strings or keys here.
+appsettings.Development.json
+appsettings.Local.json
+
+# Node / React
+node_modules/
+dist/
+.vite/
+*.local
+
+# deploy.sh build output
+/publish/
+/deploy.zip
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+.DS_Store
