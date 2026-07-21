@@ -153,6 +153,13 @@ export interface RouteResponseDto {
   points: RoutePointDto[] | null;
 }
 
+export interface GeocodeResponseDto {
+  found: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  displayName: string | null;
+}
+
 export interface CreateDeviceResponse {
   id: string;
   label: string;

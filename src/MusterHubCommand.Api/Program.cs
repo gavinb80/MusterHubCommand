@@ -48,6 +48,17 @@ builder.Services.AddHttpClient<ICoreDirectoryClient, HttpCoreDirectoryClient>();
 builder.Services.Configure<RoutingOptions>(builder.Configuration.GetSection(RoutingOptions.SectionName));
 builder.Services.AddSingleton<RoutingService>();
 
+// Nominatim's usage policy requires a request identifying the calling
+// application (User-Agent or Referer) and expects occasional, human-
+// triggered lookups rather than bulk traffic -- exactly what the "Locate"
+// button is.
+builder.Services.AddHttpClient<GeocodingService>(client =>
+{
+    client.BaseAddress = new Uri("https://nominatim.openstreetmap.org/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("MusterHubCommand/1.0 (musterhub.app)");
+    client.Timeout = TimeSpan.FromSeconds(8);
+});
+
 builder.Services.AddHttpClient<CoreNotificationService>((sp, client) =>
 {
     client.Timeout = TimeSpan.FromSeconds(5); // best-effort: never hold up incident creation

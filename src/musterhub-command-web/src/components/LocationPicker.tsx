@@ -1,4 +1,5 @@
-import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import { useEffect } from "react";
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import markerIconUrl from "leaflet/dist/images/marker-icon.png";
 import markerIcon2xUrl from "leaflet/dist/images/marker-icon-2x.png";
@@ -19,6 +20,21 @@ const DEFAULT_ZOOM = 9;
 
 function ClickCapture({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({ click: (e) => onPick(e.latlng.lat, e.latlng.lng) });
+  return null;
+}
+
+// MapContainer's center/zoom props only apply on first mount -- react-leaflet
+// doesn't move an already-mounted map when they change later, so a pin set
+// externally (the "Locate" button geocoding an address) never brought the
+// map's view along with it. This drives the view imperatively whenever the
+// coordinates change, from whatever source.
+function Recenter({ latitude, longitude }: { latitude: number | null; longitude: number | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (latitude != null && longitude != null) {
+      map.flyTo([latitude, longitude], Math.max(map.getZoom(), 15), { duration: 0.5 });
+    }
+  }, [latitude, longitude]);
   return null;
 }
 
@@ -45,6 +61,7 @@ export function LocationPicker({ latitude, longitude, onChange, allowClear = tru
         <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         {hasPin && <Marker position={[latitude, longitude]} icon={markerIcon} />}
         <ClickCapture onPick={onChange} />
+        <Recenter latitude={latitude} longitude={longitude} />
       </MapContainer>
       <div className="flex items-center justify-between text-caption text-(--content-secondary)">
         <span>{hasPin ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)} -- click the map to move it` : "Click the map to set a location"}</span>

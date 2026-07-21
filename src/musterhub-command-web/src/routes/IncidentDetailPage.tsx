@@ -6,7 +6,7 @@ import { useToast } from "../components/ToastProvider";
 import { IncidentMap } from "../components/IncidentMap";
 import { LocationPicker } from "../components/LocationPicker";
 import type {
-  AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, IncidentDto, IncidentUpdateType,
+  AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, GeocodeResponseDto, IncidentDto, IncidentUpdateType,
   RouteResponseDto, SetApplianceEntry,
 } from "../api/types";
 
@@ -300,12 +300,37 @@ function LocationPanel({ incident, route, onRouteChange }: {
     onError: (error) => showToast(error.message, "error"),
   });
 
+  const locateMutation = useMutation({
+    mutationFn: (query: string) => apiFetch<GeocodeResponseDto>(`/geocode?query=${encodeURIComponent(query)}`),
+    onSuccess: (result) => {
+      if (!result.found || result.latitude == null || result.longitude == null) {
+        showToast("Couldn't find that address -- click the map to set it instead", "error");
+        return;
+      }
+      setDraftLat(result.latitude);
+      setDraftLng(result.longitude);
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
   const hasLocation = incident.latitude != null && incident.longitude != null;
 
   if (editing) {
     return (
       <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card flex flex-col gap-3">
-        <h2 className="text-card-title font-semibold text-(--content-primary)">Set location</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-card-title font-semibold text-(--content-primary)">Set location</h2>
+          {incident.address && (
+            <button
+              type="button"
+              disabled={locateMutation.isPending}
+              onClick={() => locateMutation.mutate(incident.address!)}
+              className="rounded-lg border border-(--surface-border) px-3 py-1.5 text-caption text-(--content-primary) disabled:opacity-60"
+            >
+              {locateMutation.isPending ? "Locating..." : `Locate "${incident.address}"`}
+            </button>
+          )}
+        </div>
         <LocationPicker latitude={draftLat} longitude={draftLng} onChange={(lat, lng) => { setDraftLat(lat); setDraftLng(lng); }} allowClear={false} />
         <div className="flex justify-end gap-2">
           <button type="button" onClick={() => setEditing(false)} className="rounded-lg px-3 py-1.5 text-body text-(--content-secondary)">

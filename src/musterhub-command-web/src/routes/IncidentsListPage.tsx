@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Dialog from "@radix-ui/react-dialog";
 import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import { LocationPicker } from "../components/LocationPicker";
-import type { CreateIncidentRequest, IncidentDto, IncidentSummaryDto, OrgUnitDto } from "../api/types";
+import type { CreateIncidentRequest, GeocodeResponseDto, IncidentDto, IncidentSummaryDto, OrgUnitDto } from "../api/types";
 
 const STATUS_STYLES: Record<string, string> = {
   Open: "bg-status-open/15 text-status-open",
@@ -25,8 +25,22 @@ function NewIncidentDialog({ stations }: { stations: OrgUnitDto[] }) {
   const [open, setOpen] = useState(false);
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const addressRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+
+  const locateMutation = useMutation({
+    mutationFn: (query: string) => apiFetch<GeocodeResponseDto>(`/geocode?query=${encodeURIComponent(query)}`),
+    onSuccess: (result) => {
+      if (!result.found || result.latitude == null || result.longitude == null) {
+        showToast("Couldn't find that address -- click the map to set it instead", "error");
+        return;
+      }
+      setLatitude(result.latitude);
+      setLongitude(result.longitude);
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
 
   const createMutation = useMutation({
     mutationFn: (request: CreateIncidentRequest) => apiFetch<IncidentDto>("/incidents", {
@@ -87,7 +101,20 @@ function NewIncidentDialog({ stations }: { stations: OrgUnitDto[] }) {
             </label>
             <label className="flex flex-col gap-1 text-body text-(--content-primary)">
               Address
-              <input name="address" className="rounded-lg border border-(--surface-border) px-3 py-2" />
+              <div className="flex gap-2">
+                <input ref={addressRef} name="address" className="flex-1 rounded-lg border border-(--surface-border) px-3 py-2" />
+                <button
+                  type="button"
+                  disabled={locateMutation.isPending}
+                  onClick={() => {
+                    const query = addressRef.current?.value.trim();
+                    if (query) locateMutation.mutate(query);
+                  }}
+                  className="rounded-lg border border-(--surface-border) px-3 py-2 text-body text-(--content-primary) disabled:opacity-60"
+                >
+                  {locateMutation.isPending ? "Locating..." : "Locate"}
+                </button>
+              </div>
             </label>
             <label className="flex flex-col gap-1 text-body text-(--content-primary)">
               Description
