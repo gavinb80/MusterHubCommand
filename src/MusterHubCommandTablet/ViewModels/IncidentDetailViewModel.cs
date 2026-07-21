@@ -8,7 +8,7 @@ using Sentry;
 
 namespace MusterHubCommandTablet.ViewModels;
 
-[QueryProperty(nameof(IncidentId), "id")]
+[QueryProperty(nameof(IncidentIdString), "id")]
 public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 {
     private readonly IApiClient apiClient;
@@ -21,6 +21,19 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     [ObservableProperty]
     private Guid incidentId;
+
+    // Shell's QueryProperty machinery hands query values to the target
+    // property via Convert.ChangeType, which has no string->Guid
+    // conversion and throws -- so this has to be the string Shell sets,
+    // parsed into the real IncidentId ourselves, not IncidentId directly.
+    public string IncidentIdString
+    {
+        get => IncidentId.ToString();
+        set
+        {
+            if (Guid.TryParse(value, out var parsed)) IncidentId = parsed;
+        }
+    }
 
     [ObservableProperty]
     private IncidentDto? incident;
