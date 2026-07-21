@@ -250,7 +250,7 @@ export function SetupPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-page-title font-semibold text-brand-secondary">Setup</h1>
+      <h1 className="text-page-title font-semibold text-(--content-primary)">Setup</h1>
       <div className="flex gap-2 border-b border-(--surface-border)">
         {TABS.map((t) => (
           <button

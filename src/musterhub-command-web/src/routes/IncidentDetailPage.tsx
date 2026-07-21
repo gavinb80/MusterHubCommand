@@ -235,7 +235,7 @@ export function IncidentDetailPage() {
 
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-page-title font-semibold text-brand-secondary">{incident.incidentType}</h1>
+          <h1 className="text-page-title font-semibold text-(--content-primary)">{incident.incidentType}</h1>
           <p className="mt-1 text-body text-(--content-secondary)">
             {incident.address ?? "No address given"} &middot; {incident.orgUnitName}
           </p>

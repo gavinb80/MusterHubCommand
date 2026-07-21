@@ -122,7 +122,7 @@ export function IncidentsListPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-page-title font-semibold text-brand-secondary">Incidents</h1>
+        <h1 className="text-page-title font-semibold text-(--content-primary)">Incidents</h1>
         <NewIncidentDialog stations={stations} />
       </div>
 
