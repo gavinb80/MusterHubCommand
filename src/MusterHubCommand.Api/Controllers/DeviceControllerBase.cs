@@ -17,4 +17,5 @@ public abstract class DeviceControllerBase : ControllerBase
     protected Guid OrganisationId => Guid.Parse(User.FindFirstValue("org_id")!);
     protected Guid DeviceOrgUnitId => Guid.Parse(User.FindFirstValue("org_unit_id")!);
     protected Guid DeviceId => Guid.Parse(User.FindFirstValue("device_id")!);
+    protected string? DeviceCallsign => User.FindFirstValue("callsign");
 }

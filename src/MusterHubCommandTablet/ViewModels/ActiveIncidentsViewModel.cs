@@ -27,18 +27,43 @@ public partial class ActiveIncidentsViewModel : BaseViewModel, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasNoIncidents))]
+    [NotifyPropertyChangedFor(nameof(HasNoCallsign))]
     private bool loadedOnce;
 
-    public bool HasNoIncidents => LoadedOnce && Incidents.Count == 0;
+    // null until the one-shot fetch in OnAppearingAsync resolves -- kept
+    // separate from Incidents.Count == 0 so the empty state can say WHY:
+    // no callsign configured (fail closed, nothing can ever show) reads
+    // very differently from callsign set but genuinely nothing assigned.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoIncidents))]
+    [NotifyPropertyChangedFor(nameof(HasNoCallsign))]
+    private bool? hasCallsignConfigured;
+
+    public bool HasNoCallsign => LoadedOnce && HasCallsignConfigured == false;
+    public bool HasNoIncidents => LoadedOnce && HasCallsignConfigured == true && Incidents.Count == 0;
 
     public async Task OnAppearingAsync()
     {
+        _ = LoadDeviceInfoAsync();
         await RefreshAsync();
 
         refreshTimer ??= Application.Current!.Dispatcher.CreateTimer();
         refreshTimer.Interval = TimeSpan.FromSeconds(15);
         refreshTimer.Tick += async (_, _) => await RefreshAsync();
         refreshTimer.Start();
+    }
+
+    private async Task LoadDeviceInfoAsync()
+    {
+        try
+        {
+            var (result, error) = await apiClient.GetDeviceAsync();
+            if (error != ApiClient.RevokedError && result is not null) HasCallsignConfigured = !string.IsNullOrWhiteSpace(result.Callsign);
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
     }
 
     public void OnDisappearing() => refreshTimer?.Stop();
@@ -96,6 +121,16 @@ public partial class ActiveIncidentsViewModel : BaseViewModel, IDisposable
             if (existingIndex < 0) Incidents.Add(incident);
             else if (Incidents[existingIndex].UpdatedAtUtc != incident.UpdatedAtUtc) Incidents[existingIndex] = incident;
         }
+
+        // HasNoIncidents depends on Incidents.Count, but nothing about
+        // mutating an ObservableCollection's contents raises PropertyChanged
+        // for a DIFFERENT computed property that merely reads its Count --
+        // CollectionChanged and PropertyChanged are separate notification
+        // paths. Without this, the empty-state message shown once (e.g. on
+        // first pairing, before anything's assigned) never clears once an
+        // incident actually appears, even though the list itself renders
+        // correctly underneath it.
+        OnPropertyChanged(nameof(HasNoIncidents));
     }
 
     [RelayCommand]

@@ -35,3 +35,5 @@ public record RouteResponseDto(
 public record UpdateDeviceLocationRequest(double Latitude, double Longitude);
 
 public record OrganisationSettingsDto(double GeofenceRadiusMeters);
+
+public record TabletDeviceDto(string? Callsign);

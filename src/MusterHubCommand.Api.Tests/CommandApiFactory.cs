@@ -151,6 +151,7 @@ public static class Seed
     public const string IntegrationKeyBPlaintext = "test-integration-key-org-b";
     public static readonly Guid DeviceA = Guid.Parse("aaaaaaaa-6666-0000-0000-000000000001");
     public static readonly Guid DeviceB = Guid.Parse("bbbbbbbb-6666-0000-0000-000000000001");
+    public const string DeviceACallsign = "KV57P1";
 
     public static async Task ApplyAsync(ApplicationDbContext db)
     {
@@ -181,7 +182,7 @@ public static class Seed
             new EmployeeStationAssignment { OrganisationId = OrgA, EmployeeId = CrewAEmployee, OrgUnitId = StationA, IsHome = true },
             new EmployeeStationAssignment { OrganisationId = OrgB, EmployeeId = OperatorBEmployee, OrgUnitId = StationB, IsHome = true });
 
-        db.Devices.Add(new Device { Id = DeviceA, OrganisationId = OrgA, OrgUnitId = StationA, Label = "Engine 1 (A)", TokenHash = SecretHasher.Hash(DeviceATokenPlaintext) });
+        db.Devices.Add(new Device { Id = DeviceA, OrganisationId = OrgA, OrgUnitId = StationA, Label = "Engine 1 (A)", Callsign = DeviceACallsign, TokenHash = SecretHasher.Hash(DeviceATokenPlaintext) });
         db.Devices.Add(new Device { Id = DeviceB, OrganisationId = OrgB, OrgUnitId = StationB, Label = "Engine 1 (B)", TokenHash = SecretHasher.Hash(DeviceBTokenPlaintext) });
 
         db.IntegrationApiKeys.Add(new IntegrationApiKey { OrganisationId = OrgA, Label = "Vision (A)", KeyHash = SecretHasher.Hash(IntegrationKeyAPlaintext) });
@@ -197,6 +198,12 @@ public static class Seed
             Id = IncidentB, OrganisationId = OrgB, ExternalReference = "SEED-B-1", IncidentType = "RTC",
             Address = "Seed incident B", OrgUnitId = StationB, StartedAtUtc = DateTimeOffset.UtcNow,
         });
+
+        // DeviceA is "attending" IncidentA -- tablet endpoints now scope
+        // visibility to the device's own callsign, not just its station
+        // (see TabletIncidentsController.AttendedByThisDevice), so tests
+        // that expect DeviceA to see IncidentA need this to actually hold.
+        db.IncidentAppliances.Add(new IncidentAppliance { IncidentId = IncidentA, Callsign = DeviceACallsign });
 
         await db.SaveChangesAsync();
     }

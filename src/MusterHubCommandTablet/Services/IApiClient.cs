@@ -17,4 +17,5 @@ public interface IApiClient
     Task<string?> ReportLocationAsync(double latitude, double longitude);
     Task<(IncidentDto? Result, string? Error)> StartNavigationAsync(Guid incidentId);
     Task<(OrganisationSettingsDto? Result, string? Error)> GetOrganisationSettingsAsync();
+    Task<(TabletDeviceDto? Result, string? Error)> GetDeviceAsync();
 }

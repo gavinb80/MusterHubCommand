@@ -60,6 +60,9 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<(OrganisationSettingsDto? Result, string? Error)> GetOrganisationSettingsAsync() =>
         GetAsync<OrganisationSettingsDto>("api/tablet/organisation-settings");
 
+    public Task<(TabletDeviceDto? Result, string? Error)> GetDeviceAsync() =>
+        GetAsync<TabletDeviceDto>("api/tablet/device");
+
     private async Task<(T? Result, string? Error)> GetAsync<T>(string path)
     {
         try

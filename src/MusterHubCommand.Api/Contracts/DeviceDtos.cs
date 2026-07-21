@@ -8,6 +8,11 @@ public record DeviceDto(
 
 public record CreateDeviceRequest(string Label, Guid OrgUnitId);
 
+// The tablet's own read of itself -- lets it distinguish "no callsign
+// configured" from "callsign set, nothing assigned right now" so the
+// active-incidents empty state can say which one it is.
+public record TabletDeviceDto(string? Callsign);
+
 public record UpdateDeviceLocationRequest(double Latitude, double Longitude);
 
 // The plaintext token is returned exactly once, at creation -- same

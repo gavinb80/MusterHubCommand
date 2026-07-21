@@ -24,11 +24,22 @@
             <Grid>
 
                 <Label
-                    Text="No active incidents at this station right now."
+                    Text="This device is not currently attached to an active incident."
                     Style="{StaticResource CardSubtitleLabel}"
                     IsVisible="{Binding HasNoIncidents}"
                     HorizontalOptions="Center"
-                    VerticalOptions="Center" />
+                    VerticalOptions="Center"
+                    HorizontalTextAlignment="Center"
+                    Margin="40,0" />
+
+                <Label
+                    Text="This tablet has no callsign set. Ask an Operator to configure one in Setup &gt; Devices."
+                    Style="{StaticResource CardSubtitleLabel}"
+                    IsVisible="{Binding HasNoCallsign}"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    HorizontalTextAlignment="Center"
+                    Margin="40,0" />
 
                 <CollectionView ItemsSource="{Binding Incidents}" SelectionMode="None">
                     <CollectionView.ItemsLayout>

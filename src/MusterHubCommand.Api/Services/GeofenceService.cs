@@ -30,8 +30,19 @@ public class GeofenceService(ApplicationDbContext db, IncidentService incidentSe
         {
             if (incident.Latitude is null || incident.Longitude is null) continue;
 
+            // Never creates a first-ever attendance row -- geofence proximity
+            // alone must not be able to self-assign a device to an incident
+            // Control never dispatched it to. Only transitions an appliance
+            // ALREADY on this incident's attendance list (however it got
+            // there -- Vision's push, or its own Start navigation) through
+            // to OnScene. Without this, a vehicle driving within radius of
+            // a completely unrelated incident at the same station -- on its
+            // way to the one it's actually attending -- would attach itself
+            // to it, which combined with TabletIncidentsController's own
+            // attendance-based visibility check would then make that
+            // incident newly readable too.
             var existing = incident.Appliances.FirstOrDefault(a => string.Equals(a.Callsign, callsign, StringComparison.OrdinalIgnoreCase));
-            if (existing?.Status == ApplianceStatus.OnScene) continue;
+            if (existing is null || existing.Status == ApplianceStatus.OnScene) continue;
 
             var there = new Coordinate((float)incident.Latitude.Value, (float)incident.Longitude.Value);
             if (Coordinate.DistanceEstimateInMeter(here, there) <= radiusMeters)

@@ -32,17 +32,18 @@ public class NavigateModeTests(CommandApiFactory factory)
         return (await _operatorA.GetFromJsonAsync<IncidentDto>($"/api/incidents/{summary.Id}", ClientExtensions.Json))!;
     }
 
+    // start-navigation now requires the device to already be attending
+    // (TabletIncidentsController.AttendedByThisDevice gates every tablet
+    // endpoint, not just the incident list) -- a device that was never
+    // dispatched can't see the incident at all, let alone act on it.
     [Fact]
-    public async Task Start_navigation_with_no_callsign_set_still_succeeds_and_touches_no_attendance()
+    public async Task Start_navigation_with_no_callsign_set_is_404_not_a_silent_no_op()
     {
         var (deviceToken, externalReference) = await NewDeviceAndIncidentAsync("NAV-NO-CALLSIGN-1");
         var incident = await GetIncidentByReferenceAsync(externalReference);
 
         var response = await factory.AsDevice(deviceToken).PostAsync($"/api/tablet/incidents/{incident.Id}/start-navigation", null);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var after = await GetIncidentByReferenceAsync(externalReference);
-        Assert.Empty(after.Appliances);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -54,6 +55,11 @@ public class NavigateModeTests(CommandApiFactory factory)
         var deviceId = (await _operatorA.GetListAsync<DeviceDto>("/api/devices")).Single(d => d.Label == "Nav test NAV-UPSERT-1").Id;
         var setCallsign = await _operatorA.PutAsJsonAsync($"/api/devices/{deviceId}/callsign", "KV57P1");
         Assert.Equal(HttpStatusCode.OK, setCallsign.StatusCode);
+
+        // Vision/Control dispatches first -- this is what makes the
+        // incident visible to the device at all, same as production.
+        await _integrationA.PutAsJsonAsync($"/api/integrations/incidents/{externalReference}/appliances",
+            new SetAppliancesRequest([new SetApplianceEntry("KV57P1", ApplianceStatus.Mobilised)]));
 
         var start = await factory.AsDevice(deviceToken).PostAsync($"/api/tablet/incidents/{incident.Id}/start-navigation", null);
         Assert.Equal(HttpStatusCode.OK, start.StatusCode);
@@ -74,11 +80,17 @@ public class NavigateModeTests(CommandApiFactory factory)
         var (deviceToken, externalReference) = await NewDeviceAndIncidentAsync("NAV-OTHERS-1");
         var incident = await GetIncidentByReferenceAsync(externalReference);
 
-        await _integrationA.PutAsJsonAsync($"/api/integrations/incidents/{externalReference}/appliances",
-            new SetAppliancesRequest([new SetApplianceEntry("KV57P2", ApplianceStatus.OnScene)]));
-
         var deviceId = (await _operatorA.GetListAsync<DeviceDto>("/api/devices")).Single(d => d.Label == "Nav test NAV-OTHERS-1").Id;
         await _operatorA.PutAsJsonAsync($"/api/devices/{deviceId}/callsign", "KV57P1");
+
+        // Both appliances dispatched together -- SetAppliances replaces the
+        // whole list, so this has to be one call, not two.
+        await _integrationA.PutAsJsonAsync($"/api/integrations/incidents/{externalReference}/appliances",
+            new SetAppliancesRequest([
+                new SetApplianceEntry("KV57P1", ApplianceStatus.Mobilised),
+                new SetApplianceEntry("KV57P2", ApplianceStatus.OnScene),
+            ]));
+
         await factory.AsDevice(deviceToken).PostAsync($"/api/tablet/incidents/{incident.Id}/start-navigation", null);
 
         var after = await GetIncidentByReferenceAsync(externalReference);

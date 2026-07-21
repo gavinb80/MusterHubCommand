@@ -51,12 +51,16 @@ public class DeviceAuthenticationHandler(
         device.LastSeenAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync();
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim("org_id", device.OrganisationId.ToString()),
-            new Claim("device_id", device.Id.ToString()),
-            new Claim("org_unit_id", device.OrgUnitId.ToString()),
+            new("org_id", device.OrganisationId.ToString()),
+            new("device_id", device.Id.ToString()),
+            new("org_unit_id", device.OrgUnitId.ToString()),
         };
+        // Freshly queried above on every single request, never cached --
+        // an Operator changing this device's callsign in Setup takes
+        // effect on its very next call, not just after re-pairing.
+        if (!string.IsNullOrWhiteSpace(device.Callsign)) claims.Add(new Claim("callsign", device.Callsign));
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
         return AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName));

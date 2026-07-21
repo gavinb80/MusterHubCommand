@@ -9,6 +9,7 @@ namespace MusterHubCommand.Api.Tests;
 public class DeviceAuthTests(CommandApiFactory factory)
 {
     private readonly HttpClient _operatorA = factory.AsUser(Seed.OrgA, Seed.OperatorAPerson);
+    private readonly HttpClient _integrationA = factory.AsIntegration(Seed.IntegrationKeyAPlaintext);
 
     [Fact]
     public async Task Invalid_device_token_is_401()
@@ -64,6 +65,10 @@ public class DeviceAuthTests(CommandApiFactory factory)
         var note = dto.Updates.Single(u => u.Text == "Casualty extricated");
         Assert.Equal(IncidentUpdateSource.Crew, note.Source);
         Assert.Equal(IncidentUpdateType.Note, note.UpdateType);
+        // Tagged with the device's own callsign, not left blank -- a
+        // timeline entry has to say WHICH appliance left it, not just
+        // "some crew, somewhere."
+        Assert.Equal(Seed.DeviceACallsign, note.AuthorName);
     }
 
     [Fact]
@@ -78,5 +83,63 @@ public class DeviceAuthTests(CommandApiFactory factory)
 
         var response = await factory.AsDevice(device.PairingToken).GetAsync($"/api/tablet/incidents/{Seed.IncidentA}");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // The property this whole scoping change exists for: a station can
+    // have more than one appliance out at once, and one crew has no
+    // business seeing full detail of a job a different appliance from the
+    // SAME station is attending, not it.
+    [Fact]
+    public async Task Device_cannot_see_or_read_an_incident_a_different_appliance_at_the_same_station_is_attending()
+    {
+        var pairing = await _operatorA.PostAsJsonAsync("/api/devices", new { label = "Second Tavistock tablet", orgUnitId = Seed.StationA });
+        var otherDevice = (await pairing.Content.ReadFromJsonAsync<CreateDeviceResponse>(ClientExtensions.Json))!;
+        var setCallsign = await _operatorA.PutAsJsonAsync($"/api/devices/{otherDevice.Id}/callsign", "KV57P2");
+        Assert.Equal(HttpStatusCode.OK, setCallsign.StatusCode);
+
+        // A second incident at the SAME station, attended only by KV57P2 --
+        // Seed.IncidentA is already attended by Seed.DeviceA's own KV57P1.
+        await _integrationA.PostAsJsonAsync("/api/integrations/incidents", new CreateIncidentRequest(
+            "SNOOP-CHECK-1", "RTC", null, "Other appliance's job", 50.55, -4.15, "KV57", DateTimeOffset.UtcNow));
+        await _integrationA.PutAsJsonAsync("/api/integrations/incidents/SNOOP-CHECK-1/appliances",
+            new SetAppliancesRequest([new SetApplianceEntry("KV57P2", ApplianceStatus.Mobilised)]));
+        var otherIncidentId = (await _operatorA.GetListAsync<IncidentSummaryDto>("/api/incidents?activeOnly=false"))
+            .Single(i => i.ExternalReference == "SNOOP-CHECK-1").Id;
+
+        var deviceATablet = factory.AsDevice(Seed.DeviceATokenPlaintext);
+        var otherTablet = factory.AsDevice(otherDevice.PairingToken);
+
+        // Neither device's list includes the incident it isn't attending.
+        var deviceAIncidents = await deviceATablet.GetListAsync<IncidentSummaryDto>("/api/tablet/incidents");
+        Assert.DoesNotContain(deviceAIncidents, i => i.Id == otherIncidentId);
+        var otherDeviceIncidents = await otherTablet.GetListAsync<IncidentSummaryDto>("/api/tablet/incidents");
+        Assert.DoesNotContain(otherDeviceIncidents, i => i.Id == Seed.IncidentA);
+
+        // Nor can either fetch the other's incident directly by id.
+        var deviceAReadsOther = await deviceATablet.GetAsync($"/api/tablet/incidents/{otherIncidentId}");
+        Assert.Equal(HttpStatusCode.NotFound, deviceAReadsOther.StatusCode);
+        var otherReadsDeviceA = await otherTablet.GetAsync($"/api/tablet/incidents/{Seed.IncidentA}");
+        Assert.Equal(HttpStatusCode.NotFound, otherReadsDeviceA.StatusCode);
+
+        // Each still sees its own.
+        Assert.Contains(deviceAIncidents, i => i.Id == Seed.IncidentA);
+        Assert.Contains(otherDeviceIncidents, i => i.Id == otherIncidentId);
+    }
+
+    [Fact]
+    public async Task Device_with_no_callsign_sees_nothing_and_the_device_endpoint_reports_it()
+    {
+        var pairing = await _operatorA.PostAsJsonAsync("/api/devices", new { label = "Unconfigured tablet", orgUnitId = Seed.StationA });
+        var device = (await pairing.Content.ReadFromJsonAsync<CreateDeviceResponse>(ClientExtensions.Json))!;
+        var tablet = factory.AsDevice(device.PairingToken);
+
+        // Same station as Seed.IncidentA, which genuinely is open -- an
+        // empty list here has to come from the fail-closed no-callsign
+        // rule, not from there being nothing to see.
+        var incidents = await tablet.GetListAsync<IncidentSummaryDto>("/api/tablet/incidents");
+        Assert.Empty(incidents);
+
+        var deviceInfo = await tablet.GetFromJsonAsync<TabletDeviceDto>("/api/tablet/device", ClientExtensions.Json);
+        Assert.Null(deviceInfo!.Callsign);
     }
 }
