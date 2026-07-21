@@ -12,7 +12,7 @@
 
             <converters:StatusToColorConverter x:Key="StatusToColorConverter" />
             <converters:StringNotEmptyToBoolConverter x:Key="StringNotEmptyToBoolConverter" />
-            <converters:HazardToBackgroundConverter x:Key="HazardToBackgroundConverter" />
+            <converters:TimelineKindToColorConverter x:Key="TimelineKindToColorConverter" />
             <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
             <converters:CollectionEmptyConverter x:Key="CollectionEmptyConverter" />
         </ResourceDictionary>

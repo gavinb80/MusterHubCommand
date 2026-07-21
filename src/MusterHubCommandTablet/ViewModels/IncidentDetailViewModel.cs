@@ -8,6 +8,12 @@ using Sentry;
 
 namespace MusterHubCommandTablet.ViewModels;
 
+// View-model-only, unlike Models/IncidentModels.cs's DTOs -- this doesn't
+// mirror anything on the API, it's IncidentDetailViewModel's own merge of
+// Incident.StartedAtUtc/ClosedAtUtc with the real IncidentUpdateDto rows
+// into one bindable, chronological list (see BuildTimeline below).
+public record TimelineEntry(string Id, string Kind, string Text, string Caption, DateTimeOffset Timestamp);
+
 [QueryProperty(nameof(IncidentIdString), "id")]
 public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 {
@@ -37,6 +43,19 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     [ObservableProperty]
     private IncidentDto? incident;
+
+    [ObservableProperty]
+    private List<TimelineEntry> timeline = [];
+
+    // Session-only, defaults visible -- resets on every fresh entry to this
+    // page rather than persisting, same as the web console's own toggle.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowMap))]
+    [NotifyPropertyChangedFor(nameof(MapToggleLabel))]
+    private bool isMapVisible = true;
+
+    public bool ShowMap => HasLocation && IsMapVisible;
+    public string MapToggleLabel => IsMapVisible ? "Hide map" : "Show map";
 
     [ObservableProperty]
     private string noteText = string.Empty;
@@ -86,6 +105,40 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
                    $"{appliance.Longitude.ToString(CultureInfo.InvariantCulture)}, {pointsJson});";
         }
     }
+
+    // Merges Incident's own creation/close timestamps with the real
+    // IncidentUpdateDto rows (which by this point already include a
+    // ResourceChange entry for every appliance status change --
+    // IncidentService writes those server-side) into one chronological,
+    // oldest-first list. Same merge the web console's own buildTimeline
+    // does, kept in sync by hand rather than shared -- two small, separate
+    // client-side projections of the same wire data, not worth a shared
+    // package for.
+    private static List<TimelineEntry> BuildTimeline(IncidentDto incident)
+    {
+        var entries = new List<TimelineEntry>
+        {
+            new("created", "Created", $"Incident created: {incident.IncidentType}", incident.OrgUnitName, incident.StartedAtUtc),
+        };
+        entries.AddRange(incident.Updates.Select(u => new TimelineEntry(
+            u.Id.ToString(), u.UpdateType,
+            u.Text,
+            // authorName first regardless of source -- a tablet's crew note
+            // is tagged with its own device callsign
+            // (TabletIncidentsController.AddNote), so this reads as
+            // "KV57P1", not a bare "Crew note" indistinguishable from every
+            // other appliance's. Only a null authorName (a resource change
+            // auto-logged with no note text of its own) falls back to the
+            // generic per-source label.
+            u.UpdateType == "Hazard" ? "HAZARD" : (u.AuthorName ?? (u.Source == "Crew" ? "Crew" : "Control Room")),
+            u.CreatedAtUtc)));
+        if (incident.ClosedAtUtc is { } closedAt) entries.Add(new("closed", "Closed", "Incident closed", incident.Status, closedAt));
+
+        return entries.OrderBy(e => e.Timestamp).ToList();
+    }
+
+    [RelayCommand]
+    private void ToggleMap() => IsMapVisible = !IsMapVisible;
 
     private static string FormatDistance(double metres) =>
         metres >= 1000 ? $"{(metres / 1000).ToString("0.0", CultureInfo.InvariantCulture)}km" : $"{Math.Round(metres)}m";
@@ -161,7 +214,9 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             // zoom) even when nothing about the location changed.
             var locationChanged = Incident?.Latitude != result.Latitude || Incident?.Longitude != result.Longitude;
             Incident = result;
+            Timeline = BuildTimeline(result);
             OnPropertyChanged(nameof(HasLocation));
+            OnPropertyChanged(nameof(ShowMap));
             if (locationChanged) OnPropertyChanged(nameof(MapSource));
 
             if (HasLocation)
@@ -209,6 +264,11 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
             ErrorMessage = string.Empty;
             Incident = result;
+            // Without this, a posted note doesn't show up in the Timeline
+            // card until the next 15s poll -- confirmed live: the field
+            // clears (a successful post) but the crew sees nothing change,
+            // which reads as "did that actually work?" for up to 15s.
+            Timeline = BuildTimeline(result);
             NoteText = string.Empty;
         }
         catch (Exception ex)
@@ -253,7 +313,11 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
         try
         {
             var (result, error) = await apiClient.StartNavigationAsync(IncidentId);
-            if (result is not null) Incident = result;
+            if (result is not null)
+            {
+                Incident = result;
+                Timeline = BuildTimeline(result);
+            }
         }
         catch (Exception ex)
         {

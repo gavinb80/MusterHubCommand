@@ -25,7 +25,7 @@
             <WebView
                 x:Name="MapWebView"
                 Source="{Binding MapSource}"
-                IsVisible="{Binding HasLocation}"
+                IsVisible="{Binding ShowMap}"
                 HeightRequest="280"
                 Navigated="OnMapNavigated" />
 
@@ -34,10 +34,19 @@
                 Style="{StaticResource CardSubtitleLabel}"
                 IsVisible="{Binding HasLocation, Converter={StaticResource InvertedBoolConverter}}" />
 
-            <Label
-                Text="{Binding RouteSummary}"
-                Style="{StaticResource CardSubtitleLabel}"
-                IsVisible="{Binding RouteSummary, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasLocation}">
+                <Label
+                    Grid.Column="0"
+                    Text="{Binding RouteSummary}"
+                    Style="{StaticResource CardSubtitleLabel}"
+                    VerticalOptions="Center"
+                    IsVisible="{Binding RouteSummary, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                <Button
+                    Grid.Column="1"
+                    Text="{Binding MapToggleLabel}"
+                    Command="{Binding ToggleMapCommand}"
+                    Style="{StaticResource SecondaryButton}" />
+            </Grid>
 
             <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasLocation}">
                 <Button
@@ -76,24 +85,49 @@
                 <VerticalStackLayout Spacing="10">
                     <Label Text="Timeline" Style="{StaticResource CardTitleLabel}" />
 
-                    <CollectionView ItemsSource="{Binding Incident.Updates}" SelectionMode="None">
+                    <CollectionView ItemsSource="{Binding Timeline}" SelectionMode="None">
                         <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="models:IncidentUpdateDto">
-                                <Border StrokeThickness="0" StrokeShape="RoundRectangle 10" Padding="12,8" Margin="0,0,0,8"
-                                        BackgroundColor="{Binding UpdateType, Converter={StaticResource HazardToBackgroundConverter}}">
-                                    <VerticalStackLayout Spacing="2">
+                            <DataTemplate x:DataType="vm:TimelineEntry">
+                                <!-- Rail column: a full-height line behind a
+                                     small dot, per row. With tight row
+                                     spacing this reads as one continuous
+                                     line down the card, the same effect the
+                                     web console gets from a single
+                                     absolutely-positioned line, achieved
+                                     here per-row since MAUI has no
+                                     equivalent to that. -->
+                                <Grid ColumnDefinitions="20,*" Padding="0,0,0,12">
+                                    <Border
+                                        Grid.Column="0"
+                                        WidthRequest="2"
+                                        BackgroundColor="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}"
+                                        StrokeThickness="0"
+                                        HorizontalOptions="Center"
+                                        VerticalOptions="Fill"
+                                        Margin="0,4,0,0" />
+                                    <Border
+                                        Grid.Column="0"
+                                        WidthRequest="10"
+                                        HeightRequest="10"
+                                        StrokeShape="RoundRectangle 5"
+                                        StrokeThickness="0"
+                                        BackgroundColor="{Binding Kind, Converter={StaticResource TimelineKindToColorConverter}}"
+                                        HorizontalOptions="Center"
+                                        VerticalOptions="Start"
+                                        Margin="0,4,0,0" />
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label
+                                                Grid.Column="0"
+                                                Text="{Binding Caption}"
+                                                Style="{StaticResource CaptionLabel}"
+                                                FontAttributes="Bold"
+                                                TextColor="{Binding Kind, Converter={StaticResource TimelineKindToColorConverter}}" />
+                                            <Label Grid.Column="1" Text="{Binding Timestamp, StringFormat='{0:g}'}" Style="{StaticResource CaptionLabel}" />
+                                        </Grid>
                                         <Label Text="{Binding Text}" />
-                                        <Label Style="{StaticResource CaptionLabel}">
-                                            <Label.FormattedText>
-                                                <FormattedString>
-                                                    <Span Text="{Binding Source}" />
-                                                    <Span Text=" &#183; " />
-                                                    <Span Text="{Binding CreatedAtUtc, StringFormat='{0:g}'}" />
-                                                </FormattedString>
-                                            </Label.FormattedText>
-                                        </Label>
                                     </VerticalStackLayout>
-                                </Border>
+                                </Grid>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>

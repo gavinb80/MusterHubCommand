@@ -118,6 +118,54 @@ public class IncidentLifecycleTests(CommandApiFactory factory)
     }
 
     [Fact]
+    public async Task Dispatching_appliances_for_the_first_time_logs_one_resource_change_update_each()
+    {
+        await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIMELINE-DISPATCH-1"));
+
+        var set = await _integrationA.PutAsJsonAsync("/api/integrations/incidents/TIMELINE-DISPATCH-1/appliances",
+            new SetAppliancesRequest([new SetApplianceEntry("P57P1", ApplianceStatus.Mobilised), new SetApplianceEntry("P57P2", ApplianceStatus.EnRoute)]));
+        var dto = (await set.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
+
+        Assert.Equal(2, dto.Updates.Count(u => u.UpdateType == IncidentUpdateType.ResourceChange));
+        Assert.Contains(dto.Updates, u => u.Text == "P57P1 Mobilised" && u.Source == IncidentUpdateSource.ControlRoom);
+        Assert.Contains(dto.Updates, u => u.Text == "P57P2 EnRoute" && u.Source == IncidentUpdateSource.ControlRoom);
+    }
+
+    [Fact]
+    public async Task Repeat_push_only_logs_updates_for_appliances_that_actually_changed()
+    {
+        await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIMELINE-REPUSH-1"));
+        var first = await _integrationA.PutAsJsonAsync("/api/integrations/incidents/TIMELINE-REPUSH-1/appliances",
+            new SetAppliancesRequest([new SetApplianceEntry("P57P1", ApplianceStatus.Mobilised), new SetApplianceEntry("P57P2", ApplianceStatus.Mobilised)]));
+        var afterFirst = (await first.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
+        var countAfterFirst = afterFirst.Updates.Count;
+
+        // A resync of the exact same attendance, except P57P1 has moved on
+        // to EnRoute -- only that one appliance genuinely changed.
+        var second = await _integrationA.PutAsJsonAsync("/api/integrations/incidents/TIMELINE-REPUSH-1/appliances",
+            new SetAppliancesRequest([new SetApplianceEntry("P57P1", ApplianceStatus.EnRoute), new SetApplianceEntry("P57P2", ApplianceStatus.Mobilised)]));
+        var afterSecond = (await second.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
+
+        Assert.Equal(countAfterFirst + 1, afterSecond.Updates.Count);
+        Assert.Contains(afterSecond.Updates, u => u.Text == "P57P1 EnRoute");
+    }
+
+    [Fact]
+    public async Task Removing_an_appliance_from_a_repush_logs_a_removal_update()
+    {
+        await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIMELINE-REMOVE-1"));
+        await _integrationA.PutAsJsonAsync("/api/integrations/incidents/TIMELINE-REMOVE-1/appliances",
+            new SetAppliancesRequest([new SetApplianceEntry("P57P1", ApplianceStatus.Mobilised), new SetApplianceEntry("P57P2", ApplianceStatus.Mobilised)]));
+
+        // Stand-down via omission -- P57P2 simply isn't in the next push.
+        var second = await _integrationA.PutAsJsonAsync("/api/integrations/incidents/TIMELINE-REMOVE-1/appliances",
+            new SetAppliancesRequest([new SetApplianceEntry("P57P1", ApplianceStatus.Mobilised)]));
+        var dto = (await second.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
+
+        Assert.Contains(dto.Updates, u => u.Text == "P57P2 removed from attendance");
+    }
+
+    [Fact]
     public async Task Updates_append_hazard_entries_and_never_remove_earlier_ones()
     {
         await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIMELINE-1"));

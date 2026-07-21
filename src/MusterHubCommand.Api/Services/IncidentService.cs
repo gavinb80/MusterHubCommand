@@ -134,6 +134,12 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
         if (incident is null) return null;
 
+        // Snapshotted before RemoveRange below so the timeline only gets an
+        // entry for what actually changed -- Vision resyncing the same
+        // attendance it already pushed must not spam one update per
+        // appliance every time.
+        var previousStatus = incident.Appliances.ToDictionary(a => a.Callsign, a => a.Status, StringComparer.OrdinalIgnoreCase);
+
         db.IncidentAppliances.RemoveRange(incident.Appliances);
         // AddRange explicitly, not just an assignment to the navigation --
         // IncidentAppliance.Id is client-generated and already non-default
@@ -146,6 +152,16 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             .ToList();
         db.IncidentAppliances.AddRange(newAppliances);
         incident.Appliances = newAppliances;
+
+        foreach (var appliance in newAppliances)
+        {
+            if (!previousStatus.TryGetValue(appliance.Callsign, out var priorStatus) || priorStatus != appliance.Status)
+                QueueResourceChangeUpdate(incident, IncidentUpdateSource.ControlRoom, $"{appliance.Callsign} {appliance.Status}");
+        }
+        var newCallsigns = newAppliances.Select(a => a.Callsign).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var callsign in previousStatus.Keys.Where(c => !newCallsigns.Contains(c)))
+            QueueResourceChangeUpdate(incident, IncidentUpdateSource.ControlRoom, $"{callsign} removed from attendance");
+
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return incident;
@@ -168,8 +184,15 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         var existing = incident.Appliances.FirstOrDefault(a => string.Equals(a.Callsign, callsign, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
-            existing.Status = status;
-            existing.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            // Only a genuine transition earns a timeline entry -- the
+            // geofence check re-runs on every location report and would
+            // otherwise re-log the same already-current status repeatedly.
+            if (existing.Status != status)
+            {
+                existing.Status = status;
+                existing.UpdatedAtUtc = DateTimeOffset.UtcNow;
+                QueueResourceChangeUpdate(incident, IncidentUpdateSource.Crew, $"{callsign} {status}");
+            }
         }
         else
         {
@@ -180,10 +203,36 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             var appliance = new IncidentAppliance { IncidentId = incident.Id, Callsign = callsign, Status = status };
             db.IncidentAppliances.Add(appliance);
             incident.Appliances.Add(appliance);
+            QueueResourceChangeUpdate(incident, IncidentUpdateSource.Crew, $"{callsign} {status}");
         }
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return incident;
+    }
+
+    // Writes into the previously-reserved-but-unused ResourceChange slot
+    // (IncidentUpdateType.ResourceChange) so a status change becomes a
+    // real, permanent timeline entry -- IncidentAppliance itself only ever
+    // stores CURRENT status, so this update row is the only place a
+    // Mobilised -> EnRoute -> OnScene history survives. Text matches the
+    // same bare enum string the status pills already render elsewhere
+    // (e.g. "KV57P1 EnRoute"), not a separately-invented phrasing. Only
+    // adds to db.IncidentUpdates, not also to incident.Updates -- EF's own
+    // change-tracker fixup already links a newly-Added entity into an
+    // already-tracked principal's navigation collection once its FK is
+    // set, so adding it a second time here double-counted every entry in
+    // the Incident this method returns. Found via live test failure: two
+    // appliances dispatched together came back as four ResourceChange
+    // updates, not two.
+    private void QueueResourceChangeUpdate(Incident incident, IncidentUpdateSource source, string text)
+    {
+        db.IncidentUpdates.Add(new IncidentUpdate
+        {
+            IncidentId = incident.Id,
+            Source = source,
+            Text = text,
+            UpdateType = IncidentUpdateType.ResourceChange,
+        });
     }
 
     // Append-only -- nothing here ever edits or removes a prior update.

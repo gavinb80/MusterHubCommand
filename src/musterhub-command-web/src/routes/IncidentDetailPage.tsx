@@ -120,6 +120,61 @@ function AttendancePanel({ incident }: { incident: IncidentDto }) {
   );
 }
 
+// One synthesized entry kind per row the timeline can show -- the two
+// "created"/"closed" rows are synthesized client-side from Incident's own
+// timestamps (no backend event exists for them), everything else comes
+// straight off an IncidentUpdateDto. Keeping one discriminated type for
+// both means the render loop below doesn't need two different code paths.
+type TimelineEntry = {
+  id: string;
+  kind: "created" | "resourceChange" | "hazard" | "note" | "general" | "closed";
+  text: string;
+  caption: string;
+  timestamp: string;
+};
+
+const TIMELINE_DOT_STYLES: Record<TimelineEntry["kind"], string> = {
+  created: "bg-brand-secondary",
+  resourceChange: "bg-status-mobilised",
+  hazard: "bg-status-hazard",
+  note: "bg-(--content-secondary)",
+  general: "bg-(--content-secondary)",
+  closed: "bg-status-closed",
+};
+
+function updateKind(updateType: IncidentUpdateType): TimelineEntry["kind"] {
+  if (updateType === "Hazard") return "hazard";
+  if (updateType === "ResourceChange") return "resourceChange";
+  if (updateType === "Note") return "note";
+  return "general";
+}
+
+function buildTimeline(incident: IncidentDto): TimelineEntry[] {
+  const entries: TimelineEntry[] = [
+    { id: "created", kind: "created", text: `Incident created: ${incident.incidentType}`, caption: incident.orgUnitName, timestamp: incident.startedAtUtc },
+    ...incident.updates.map((u): TimelineEntry => ({
+      id: u.id,
+      kind: updateKind(u.updateType),
+      text: u.text,
+      // authorName first regardless of source -- a tablet's crew note is
+      // tagged with its own device callsign (TabletIncidentsController.AddNote),
+      // so this reads as "KV57P1", not a bare "Crew note" indistinguishable
+      // from every other appliance's. Only a null authorName (a resource
+      // change auto-logged with no note text of its own) falls back to the
+      // generic per-source label.
+      caption: u.updateType === "Hazard" ? "HAZARD" : (u.authorName ?? (u.source === "Crew" ? "Crew" : "Control Room")),
+      timestamp: u.createdAtUtc,
+    })),
+  ];
+  if (incident.closedAtUtc) {
+    entries.push({ id: "closed", kind: "closed", text: "Incident closed", caption: incident.status, timestamp: incident.closedAtUtc });
+  }
+  // Oldest first, top to bottom -- reads as the incident's own story in
+  // order, which is the point for a commander picking it up mid-way
+  // through (handover, sectorisation) rather than scanning for the latest.
+  return entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
 function TimelinePanel({ incident }: { incident: IncidentDto }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -134,9 +189,7 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
     onError: (error) => showToast(error.message, "error"),
   });
 
-  const sortedUpdates = [...incident.updates].sort(
-    (a, b) => new Date(b.createdAtUtc).getTime() - new Date(a.createdAtUtc).getTime(),
-  );
+  const timeline = buildTimeline(incident);
 
   return (
     <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
@@ -173,21 +226,23 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
         </div>
       </form>
 
-      <div className="mt-4 flex flex-col gap-3">
-        {sortedUpdates.length === 0 && <p className="text-body text-(--content-secondary)">No updates yet.</p>}
-        {sortedUpdates.map((u) => (
-          <div
-            key={u.id}
-            className={`rounded-lg border p-3 ${u.updateType === "Hazard" ? "border-status-hazard/40 bg-status-hazard/10" : "border-(--surface-border)"}`}
-          >
-            <div className="flex items-center justify-between text-caption text-(--content-secondary)">
-              <span>
-                {u.updateType === "Hazard" && <span className="mr-1 font-semibold text-status-hazard">HAZARD</span>}
-                {u.source === "Crew" ? "Crew note" : (u.authorName ?? "Control Room")}
-              </span>
-              <span>{new Date(u.createdAtUtc).toLocaleString()}</span>
+      {/* The rail is one absolutely-positioned line behind a column of
+          dots, not a border-left on each row -- a per-row border leaves a
+          visible seam at every gap; one continuous line reads as a single
+          connected timeline instead of a stack of separately-bordered
+          cards. */}
+      <div className="relative mt-4 flex flex-col gap-4">
+        <div className="absolute top-1 bottom-1 left-[5px] w-px bg-(--surface-border)" aria-hidden="true" />
+        {timeline.map((entry) => (
+          <div key={entry.id} className="relative flex gap-3 pl-6">
+            <span className={`absolute top-1 left-0 h-2.5 w-2.5 rounded-full ring-2 ring-(--surface) ${TIMELINE_DOT_STYLES[entry.kind]}`} />
+            <div className="flex-1">
+              <div className="flex items-center justify-between text-caption text-(--content-secondary)">
+                <span className={entry.kind === "hazard" ? "font-semibold text-status-hazard" : undefined}>{entry.caption}</span>
+                <span>{new Date(entry.timestamp).toLocaleString()}</span>
+              </div>
+              <p className="mt-0.5 text-body text-(--content-primary)">{entry.text}</p>
             </div>
-            <p className="mt-1 text-body text-(--content-primary)">{u.text}</p>
           </div>
         ))}
       </div>
@@ -278,6 +333,9 @@ function LocationPanel({ incident, route, onRouteChange }: {
   const [editing, setEditing] = useState(false);
   const [draftLat, setDraftLat] = useState<number | null>(incident.latitude);
   const [draftLng, setDraftLng] = useState<number | null>(incident.longitude);
+  // Session-only, defaults visible -- not persisted across a reload or a
+  // different incident, same as the tablet's own map-hide toggle.
+  const [mapVisible, setMapVisible] = useState(true);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -370,19 +428,29 @@ function LocationPanel({ incident, route, onRouteChange }: {
 
   return (
     <div className="flex flex-col gap-2">
-      <IncidentMap
-        latitude={incident.latitude!}
-        longitude={incident.longitude!}
-        label={incident.address ?? incident.incidentType}
-        appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
-        routePoints={route.routePoints ?? undefined}
-        geofenceRadiusMeters={geofenceRadiusMeters}
-      />
+      {mapVisible && (
+        <IncidentMap
+          latitude={incident.latitude!}
+          longitude={incident.longitude!}
+          label={incident.address ?? incident.incidentType}
+          appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
+          routePoints={route.routePoints ?? undefined}
+          geofenceRadiusMeters={geofenceRadiusMeters}
+        />
+      )}
       <div className="flex items-center justify-between">
+        {/* RoutingPanel keeps rendering with the map hidden -- distance/
+            duration is still useful info on its own, only the visual map
+            itself is what someone might want out of the way. */}
         <RoutingPanel incident={incident} onRouteChange={onRouteChange} />
-        <button type="button" onClick={startEditing} className="text-caption text-brand-primary">
-          Edit location
-        </button>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => setMapVisible((v) => !v)} className="text-caption text-(--content-secondary)">
+            {mapVisible ? "Hide map" : "Show map"}
+          </button>
+          <button type="button" onClick={startEditing} className="text-caption text-brand-primary">
+            Edit location
+          </button>
+        </div>
       </div>
     </div>
   );
