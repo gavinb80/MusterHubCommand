@@ -105,9 +105,16 @@ public partial class ActiveIncidentsViewModel : BaseViewModel, IDisposable
         await Shell.Current.GoToAsync($"incident-detail?id={incident.Id}");
     }
 
+    // Confirmed, not immediate: this is a shared, kiosk-mounted device --
+    // an accidental tap here strands the appliance without its incident
+    // feed until someone re-enters a pairing code from Setup.
     [RelayCommand]
     private async Task UnpairAsync()
     {
+        var confirmed = await Shell.Current.CurrentPage.DisplayAlertAsync(
+            "Unpair this tablet?", "It will stop showing incidents until it's paired again with a new code from Setup.", "Unpair", "Cancel");
+        if (!confirmed) return;
+
         refreshTimer?.Stop();
         await tokenStore.ClearAsync();
         await Shell.Current.GoToAsync("//pairing");
