@@ -17,6 +17,9 @@ dist/
 /publish/
 /deploy.zip
 
+# dev-all.sh logs + remembered core repo path
+.dev/
+
 # Editor / OS
 .vs/
 .vscode/
