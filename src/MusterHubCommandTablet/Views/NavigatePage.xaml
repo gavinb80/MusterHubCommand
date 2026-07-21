@@ -48,5 +48,21 @@
             </Grid>
         </Border>
 
+        <!-- Solid, not translucent, since a WebView can ignore z-order and
+             opacity on some platforms. Covers exactly the delay (incident
+             fetch, GPS fix, first route computation) that previously had
+             no visual indication at all. -->
+        <Border
+            Grid.Row="0"
+            Grid.RowSpan="3"
+            BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}"
+            StrokeThickness="0"
+            IsVisible="{Binding IsLoadingRoute}">
+            <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="12">
+                <ActivityIndicator IsRunning="{Binding IsLoadingRoute}" Color="{StaticResource Secondary}" HeightRequest="48" WidthRequest="48" />
+                <Label Text="Getting your position and route..." Style="{StaticResource CardSubtitleLabel}" HorizontalTextAlignment="Center" />
+            </VerticalStackLayout>
+        </Border>
+
     </Grid>
 </ContentPage>

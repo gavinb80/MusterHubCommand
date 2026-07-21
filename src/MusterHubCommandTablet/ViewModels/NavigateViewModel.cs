@@ -44,6 +44,13 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
     [ObservableProperty]
     private IncidentDto? incident;
 
+    // True only for the very first load (incident fetch, GPS fix, first
+    // route computation) -- distinct from the base IsBusy flag PollOnceAsync
+    // also sets on every subsequent ~12s poll, which must NOT re-show a
+    // full-screen overlay every cycle while the crew is mid-drive.
+    [ObservableProperty]
+    private bool isLoadingRoute = true;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RouteSummary))]
     [NotifyPropertyChangedFor(nameof(CurrentInstructionText))]
@@ -98,21 +105,29 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
     public async Task OnAppearingAsync()
     {
         DeviceDisplay.Current.KeepScreenOn = true;
+        IsLoadingRoute = true;
 
-        var (result, error) = await apiClient.GetIncidentAsync(IncidentId);
-        if (error == ApiClient.RevokedError)
+        try
         {
-            await Shell.Current.GoToAsync("//pairing");
-            return;
-        }
-        if (result is not null)
-        {
-            Incident = result;
-            OnPropertyChanged(nameof(HasLocation));
-            OnPropertyChanged(nameof(MapSource));
-        }
+            var (result, error) = await apiClient.GetIncidentAsync(IncidentId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                OnPropertyChanged(nameof(HasLocation));
+                OnPropertyChanged(nameof(MapSource));
+            }
 
-        await PollOnceAsync();
+            await PollOnceAsync();
+        }
+        finally
+        {
+            IsLoadingRoute = false;
+        }
 
         navTimer ??= Application.Current!.Dispatcher.CreateTimer();
         navTimer.Interval = TimeSpan.FromSeconds(12);

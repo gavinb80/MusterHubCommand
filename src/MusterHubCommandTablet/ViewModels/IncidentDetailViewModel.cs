@@ -45,6 +45,9 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     private bool isPostingNote;
 
     [ObservableProperty]
+    private bool isStartingNavigation;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RouteScript))]
     [NotifyPropertyChangedFor(nameof(RouteSummary))]
     private RouteResponseDto? route;
@@ -202,34 +205,39 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     [RelayCommand]
     private async Task GoBackAsync() => await Shell.Current.GoToAsync("..");
 
-    // Best-effort attendance update happens API-side (device Callsign set
-    // in Setup) -- this just navigates either way, since navigate mode is
-    // a useful display feature even without one configured.
+    // Navigates immediately rather than awaiting the attendance-update call
+    // first -- that call is already best-effort/a no-op API-side (no
+    // Callsign set), so blocking the transition to the driving screen on it
+    // too just adds a second network round-trip of dead time on top of
+    // NavigateViewModel's own (GPS fix, report, route). Fired instead, its
+    // own failure only logs, never surfaces here -- the crew is already
+    // looking at the nav screen by the time it would resolve.
     [RelayCommand]
     private async Task StartNavigationAsync()
     {
-        if (!HasLocation || IsBusy) return;
-        IsBusy = true;
+        if (!HasLocation || IsStartingNavigation) return;
+        IsStartingNavigation = true;
+        try
+        {
+            _ = UpdateAttendanceStatusAsync();
+            await Shell.Current.GoToAsync($"navigate?id={IncidentId}");
+        }
+        finally
+        {
+            IsStartingNavigation = false;
+        }
+    }
+
+    private async Task UpdateAttendanceStatusAsync()
+    {
         try
         {
             var (result, error) = await apiClient.StartNavigationAsync(IncidentId);
-            if (error == ApiClient.RevokedError)
-            {
-                await Shell.Current.GoToAsync("//pairing");
-                return;
-            }
             if (result is not null) Incident = result;
-
-            await Shell.Current.GoToAsync($"navigate?id={IncidentId}");
         }
         catch (Exception ex)
         {
             SentrySdk.CaptureException(ex);
-            ErrorMessage = "Couldn't start navigation. Try again.";
-        }
-        finally
-        {
-            IsBusy = false;
         }
     }
 
