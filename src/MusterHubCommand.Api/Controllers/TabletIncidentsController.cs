@@ -52,18 +52,39 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         var incident = await incidentService.FindByIdAsync(OrganisationId, id);
         if (incident is null || incident.OrgUnitId != DeviceOrgUnitId) return NotFound();
         if (incident.Latitude is null || incident.Longitude is null)
-            return Ok(new RouteResponseDto(false, "This incident has no location to route to.", null, null, null));
+            return Ok(new RouteResponseDto(false, "This incident has no location to route to.", null, null, null, null));
 
         var device = await db.Devices.IgnoreQueryFilters()
             .Include(d => d.VehicleProfile)
             .FirstOrDefaultAsync(d => d.Id == DeviceId);
         if (device?.CurrentLatitude is null || device.CurrentLongitude is null)
-            return Ok(new RouteResponseDto(false, "This tablet hasn't reported a location yet.", null, null, null));
+            return Ok(new RouteResponseDto(false, "This tablet hasn't reported a location yet.", null, null, null, null));
 
         var (result, failure) = await routingService.ComputeRouteAsync(
             device.CurrentLatitude.Value, device.CurrentLongitude.Value,
             incident.Latitude.Value, incident.Longitude.Value, device.VehicleProfile);
 
         return Ok(result is not null ? result.ToDto() : failure!.Value.ToUnavailableDto());
+    }
+
+    // Entered from the incident detail screen when a crew leaves station.
+    // Best-effort attendance update: if this device has no Callsign set in
+    // Setup, there's nothing to match against the incident's attendance
+    // list, so navigate mode still works as a display-only feature rather
+    // than failing the whole request.
+    [HttpPost("{id}/start-navigation")]
+    public async Task<ActionResult<IncidentDto>> StartNavigation(Guid id)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || incident.OrgUnitId != DeviceOrgUnitId) return NotFound();
+
+        var device = await db.Devices.IgnoreQueryFilters().FirstOrDefaultAsync(d => d.Id == DeviceId);
+        if (!string.IsNullOrWhiteSpace(device?.Callsign))
+        {
+            var updated = await incidentService.SetSingleApplianceStatusAsync(OrganisationId, id, device.Callsign, ApplianceStatus.EnRoute);
+            if (updated is not null) return Ok(updated.ToDto());
+        }
+
+        return Ok(incident.ToDto());
     }
 }

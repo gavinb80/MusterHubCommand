@@ -54,6 +54,9 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<string?> ReportLocationAsync(double latitude, double longitude) =>
         PostNoContentAsync("api/tablet/location", new UpdateDeviceLocationRequest(latitude, longitude));
 
+    public Task<(IncidentDto? Result, string? Error)> StartNavigationAsync(Guid incidentId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/start-navigation");
+
     private async Task<(T? Result, string? Error)> GetAsync<T>(string path)
     {
         try
@@ -100,6 +103,33 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
             }
 
             var result = await response.Content.ReadFromJsonAsync<TResponse>(JsonOptions);
+            return (result, null);
+        }
+        catch (Exception ex)
+        {
+            return (default, $"Could not reach Muster Hub Command ({ex.Message}).");
+        }
+    }
+
+    // For a POST with no request body but a JSON response -- start-navigation
+    // takes everything it needs from the device token itself.
+    private async Task<(T? Result, string? Error)> PostNoBodyAsync<T>(string path)
+    {
+        try
+        {
+            using var request = await BuildRequestAsync(HttpMethod.Post, path);
+            if (request is null) return (default, RevokedError);
+
+            using var response = await httpClient.SendAsync(request);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                await tokenStore.ClearAsync();
+                return (default, RevokedError);
+            }
+            if (!response.IsSuccessStatusCode)
+                return (default, $"Request to {path} failed ({(int)response.StatusCode}).");
+
+            var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions);
             return (result, null);
         }
         catch (Exception ex)

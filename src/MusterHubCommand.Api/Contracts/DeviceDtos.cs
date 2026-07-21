@@ -2,7 +2,7 @@ namespace MusterHubCommand.Api.Contracts;
 
 public record DeviceDto(
     Guid Id, string Label, Guid OrgUnitId, string OrgUnitName,
-    Guid? VehicleProfileId, string? VehicleProfileName,
+    Guid? VehicleProfileId, string? VehicleProfileName, string? Callsign,
     double? CurrentLatitude, double? CurrentLongitude, DateTimeOffset? LocationUpdatedAtUtc,
     DateTimeOffset CreatedAtUtc, DateTimeOffset? LastSeenAtUtc, bool IsActive);
 

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="MusterHubCommandTablet.Views.NavigatePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
+    x:DataType="vm:NavigateViewModel"
+    Shell.NavBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- The upcoming maneuver, glanceable at a distance, using the
+             same deep navy as the app's own icon, not a one-off colour. -->
+        <Border
+            Grid.Row="0"
+            BackgroundColor="{StaticResource Secondary}"
+            StrokeThickness="0"
+            Padding="20,16"
+            IsVisible="{Binding CurrentInstructionText, Converter={StaticResource StringNotEmptyToBoolConverter}}">
+            <Label
+                Text="{Binding CurrentInstructionText}"
+                TextColor="{StaticResource White}"
+                FontSize="30"
+                FontAttributes="Bold" />
+        </Border>
+
+        <WebView
+            x:Name="MapWebView"
+            Grid.Row="1"
+            Source="{Binding MapSource}"
+            Navigated="OnMapNavigated" />
+
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                    <Label
+                        Text="{Binding RouteSummary}"
+                        FontSize="26"
+                        FontAttributes="Bold"
+                        TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                </VerticalStackLayout>
+                <Button
+                    Grid.Column="1"
+                    Text="End navigation"
+                    Style="{StaticResource SecondaryButton}"
+                    Command="{Binding EndNavigationCommand}"
+                    VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
+    </Grid>
+</ContentPage>

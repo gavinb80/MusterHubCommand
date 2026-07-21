@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Itinero;
 using Itinero.Exceptions;
+using Itinero.LocalGeo;
 using Itinero.Profiles;
 using Microsoft.Extensions.Options;
 using MusterHubCommand.Api.Data.Entities;
@@ -9,7 +10,9 @@ namespace MusterHubCommand.Api.Routing;
 
 public record RoutePoint(double Latitude, double Longitude);
 
-public record RouteResult(double DistanceMeters, double DurationSeconds, List<RoutePoint> Points);
+public record RouteInstruction(string Text, double DistanceMeters);
+
+public record RouteResult(double DistanceMeters, double DurationSeconds, List<RoutePoint> Points, List<RouteInstruction> Instructions);
 
 // Route "unavailable" (no routerdb loaded) is a distinct outcome from
 // "no route exists" or "couldn't resolve a point on the road network" --
@@ -81,8 +84,9 @@ public class RoutingService
             var route = router.Calculate(routeProfile, start, end);
 
             var points = route.Shape.Select(c => new RoutePoint(c.Latitude, c.Longitude)).ToList();
+            var instructions = BuildInstructions(routeProfile, route);
             return Task.FromResult<(RouteResult?, RouteFailureReason?)>(
-                (new RouteResult(route.TotalDistance, route.TotalTime, points), null));
+                (new RouteResult(route.TotalDistance, route.TotalTime, points, instructions), null));
         }
         catch (ResolveFailedException ex)
         {
@@ -93,6 +97,32 @@ public class RoutingService
         {
             logger.LogInformation(ex, "No route exists between the two resolved points.");
             return Task.FromResult<(RouteResult?, RouteFailureReason?)>((null, RouteFailureReason.NoRouteFound));
+        }
+    }
+
+    // Turn-by-turn text for the tablet's navigate mode. Best-effort: an
+    // instruction-generation failure (e.g. Route.Shape too short, or a
+    // future Itinero version changing behaviour) must never take down
+    // routing itself, which is why this is a separate try/catch from the
+    // one around Calculate above and simply degrades to no instructions.
+    private List<RouteInstruction> BuildInstructions(Itinero.Profiles.Profile routeProfile, Itinero.Route route)
+    {
+        try
+        {
+            if (routeProfile.InstructionGenerator is null) return [];
+
+            var instructions = routeProfile.InstructionGenerator.Generate(route, new HumanizedLanguageReference());
+            return instructions.Select(instr =>
+            {
+                var upToHere = route.Shape.Take(instr.Shape + 1).ToList();
+                var distance = upToHere.Count > 1 ? Coordinate.DistanceEstimateInMeter(upToHere) : 0;
+                return new RouteInstruction(instr.Text, distance);
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Instruction generation failed for a route -- continuing without turn-by-turn text.");
+            return [];
         }
     }
 

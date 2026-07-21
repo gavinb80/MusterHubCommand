@@ -26,6 +26,13 @@ public class Device : ITenantScoped
     public Guid? VehicleProfileId { get; set; }
     public VehicleProfile? VehicleProfile { get; set; }
 
+    // Which IncidentAppliance row (a free-text Callsign, no FK) this device
+    // speaks for -- null means the tablet's own actions (e.g. "Start
+    // navigation") can't update an incident's attendance, since there's
+    // nothing to match against. Set from Setup, same place as everything
+    // else about a device's identity.
+    public string? Callsign { get; set; }
+
     // The appliance's own GPS, reported periodically by the tablet mounted
     // on it (POST /api/tablet/location) -- not from any separate AVL
     // system. Null until the tablet's first report lands.

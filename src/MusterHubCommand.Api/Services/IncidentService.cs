@@ -151,6 +151,41 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         return incident;
     }
 
+    // Upsert-one, deliberately not SetAppliancesAsync's replace-whole
+    // semantics -- that's for Control/Vision's full push; a single tablet
+    // reporting its own status (e.g. "Start navigation" -> EnRoute) must
+    // never clobber every other appliance's attendance row. Case-
+    // insensitive match on Callsign since it's operator-typed in two
+    // different places (Setup's Device.Callsign, and whatever Vision/
+    // Control originally pushed) and casing drift shouldn't fork a device
+    // into a second, orphaned attendance row.
+    public async Task<Incident?> SetSingleApplianceStatusAsync(
+        Guid organisationId, Guid incidentId, string callsign, ApplianceStatus status, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var existing = incident.Appliances.FirstOrDefault(a => string.Equals(a.Callsign, callsign, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            existing.Status = status;
+            existing.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
+        else
+        {
+            // Added explicitly via AddRange rather than relying on the
+            // Appliances navigation's own change tracking -- see
+            // SetAppliancesAsync's own comment on this same gotcha
+            // (client-generated Id reads as Modified, not Added).
+            var appliance = new IncidentAppliance { IncidentId = incident.Id, Callsign = callsign, Status = status };
+            db.IncidentAppliances.Add(appliance);
+            incident.Appliances.Add(appliance);
+        }
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return incident;
+    }
+
     // Append-only -- nothing here ever edits or removes a prior update.
     public async Task<Incident?> AddUpdateAsync(
         Guid organisationId, Guid incidentId, IncidentUpdateSource source,

@@ -202,6 +202,37 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     [RelayCommand]
     private async Task GoBackAsync() => await Shell.Current.GoToAsync("..");
 
+    // Best-effort attendance update happens API-side (device Callsign set
+    // in Setup) -- this just navigates either way, since navigate mode is
+    // a useful display feature even without one configured.
+    [RelayCommand]
+    private async Task StartNavigationAsync()
+    {
+        if (!HasLocation || IsBusy) return;
+        IsBusy = true;
+        try
+        {
+            var (result, error) = await apiClient.StartNavigationAsync(IncidentId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null) Incident = result;
+
+            await Shell.Current.GoToAsync($"navigate?id={IncidentId}");
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+            ErrorMessage = "Couldn't start navigation. Try again.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     public void Dispose()
     {
         if (refreshTimer is not null) refreshTimer.Stop();

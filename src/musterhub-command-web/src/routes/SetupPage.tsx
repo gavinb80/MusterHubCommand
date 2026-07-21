@@ -79,6 +79,16 @@ function DevicesTab() {
     onError: (error) => showToast(error.message, "error"),
   });
 
+  const setCallsignMutation = useMutation({
+    mutationFn: ({ id, callsign }: { id: string; callsign: string | null }) =>
+      apiFetch<DeviceDto>(`/devices/${id}/callsign`, { method: "PUT", body: JSON.stringify(callsign) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["devices"] });
+      showToast("Callsign updated");
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-body text-(--content-secondary)">
@@ -128,6 +138,20 @@ function DevicesTab() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-caption text-(--content-secondary)">
+                Callsign
+                <input
+                  key={d.callsign ?? ""}
+                  defaultValue={d.callsign ?? ""}
+                  placeholder="KV57P1"
+                  onBlur={(e) => {
+                    const value = e.target.value.trim() || null;
+                    if (value !== d.callsign) setCallsignMutation.mutate({ id: d.id, callsign: value });
+                  }}
+                  className="w-24 rounded-lg border border-(--surface-border) px-2 py-1"
+                  title="Which attendance entry this tablet's own actions (e.g. Start navigation) update on the incident"
+                />
+              </label>
               <label className="flex items-center gap-2 text-caption text-(--content-secondary)">
                 Vehicle profile
                 <select

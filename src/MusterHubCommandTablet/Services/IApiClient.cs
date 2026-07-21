@@ -15,4 +15,5 @@ public interface IApiClient
     Task<(IncidentDto? Result, string? Error)> AddNoteAsync(Guid incidentId, string text);
     Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId);
     Task<string?> ReportLocationAsync(double latitude, double longitude);
+    Task<(IncidentDto? Result, string? Error)> StartNavigationAsync(Guid incidentId);
 }

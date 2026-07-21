@@ -25,9 +25,11 @@ public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId);
 
 public record RoutePointDto(double Latitude, double Longitude);
 
+public record RouteInstructionDto(string Text, double DistanceMeters);
+
 public record RouteResponseDto(
     bool Available, string? UnavailableReason,
     double? DistanceMeters, double? DurationSeconds,
-    List<RoutePointDto>? Points);
+    List<RoutePointDto>? Points, List<RouteInstructionDto>? Instructions);
 
 public record UpdateDeviceLocationRequest(double Latitude, double Longitude);

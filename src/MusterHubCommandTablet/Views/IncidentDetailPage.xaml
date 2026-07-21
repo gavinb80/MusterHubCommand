@@ -39,6 +39,12 @@
                 Style="{StaticResource CardSubtitleLabel}"
                 IsVisible="{Binding RouteSummary, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
 
+            <Button
+                Text="Start navigation"
+                Command="{Binding StartNavigationCommand}"
+                IsVisible="{Binding HasLocation}"
+                HorizontalOptions="Fill" />
+
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Attendance" Style="{StaticResource CardTitleLabel}" />

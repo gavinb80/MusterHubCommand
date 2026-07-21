@@ -48,9 +48,26 @@ public class DevicesController(
         return Ok(ToDto(device));
     }
 
+    // Assigning null/empty clears it. This is what lets the tablet's own
+    // "Start navigation" update the incident's attendance -- see
+    // TabletIncidentsController.StartNavigation -- so leaving it unset is
+    // an ordinary, supported state, not a misconfiguration.
+    [HttpPut("{id}/callsign")]
+    public async Task<ActionResult<DeviceDto>> SetCallsign(Guid id, [FromBody] string? callsign)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var device = await db.Devices.Include(d => d.OrgUnit).Include(d => d.VehicleProfile).FirstOrDefaultAsync(d => d.Id == id);
+        if (device is null) return NotFound();
+
+        device.Callsign = string.IsNullOrWhiteSpace(callsign) ? null : callsign.Trim();
+        await db.SaveChangesAsync();
+        return Ok(ToDto(device));
+    }
+
     private static DeviceDto ToDto(Device d) => new(
         d.Id, d.Label, d.OrgUnitId, d.OrgUnit!.Name,
-        d.VehicleProfileId, d.VehicleProfile?.Name,
+        d.VehicleProfileId, d.VehicleProfile?.Name, d.Callsign,
         d.CurrentLatitude, d.CurrentLongitude, d.LocationUpdatedAtUtc,
         d.CreatedAtUtc, d.LastSeenAtUtc, d.IsActive);
 

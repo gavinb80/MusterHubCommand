@@ -117,6 +117,7 @@ export interface DeviceDto {
   orgUnitName: string;
   vehicleProfileId: string | null;
   vehicleProfileName: string | null;
+  callsign: string | null;
   currentLatitude: number | null;
   currentLongitude: number | null;
   locationUpdatedAtUtc: string | null;

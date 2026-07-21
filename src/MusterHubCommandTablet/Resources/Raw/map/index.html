@@ -59,6 +59,17 @@
       if (applianceMarker) { map.removeLayer(applianceMarker); applianceMarker = null; }
       if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
     }
+
+    // Navigate mode's own variant, called from NavigatePage's faster
+    // (~12s) poll loop instead of setRoute -- everything setRoute does,
+    // plus panning to the appliance's own position on every call. The
+    // incident-detail map deliberately preserves the crew's pan/zoom
+    // (setRoute never moves the view); a driving screen needs the opposite,
+    // auto-following the vehicle the way any turn-by-turn app does.
+    function setNavRoute(applianceLat, applianceLng, points) {
+      setRoute(applianceLat, applianceLng, points);
+      map.panTo([applianceLat, applianceLng]);
+    }
   </script>
 </body>
 </html>

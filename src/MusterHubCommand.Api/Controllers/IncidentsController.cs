@@ -108,12 +108,12 @@ public class IncidentsController(
         var incident = await incidentService.FindByIdAsync(OrganisationId, id);
         if (incident is null) return NotFound();
         if (incident.Latitude is null || incident.Longitude is null)
-            return Ok(new RouteResponseDto(false, "This incident has no location to route to.", null, null, null));
+            return Ok(new RouteResponseDto(false, "This incident has no location to route to.", null, null, null, null));
 
         var device = await db.Devices.Include(d => d.VehicleProfile).FirstOrDefaultAsync(d => d.Id == deviceId);
         if (device is null) return NotFound();
         if (device.CurrentLatitude is null || device.CurrentLongitude is null)
-            return Ok(new RouteResponseDto(false, "That device hasn't reported a location yet.", null, null, null));
+            return Ok(new RouteResponseDto(false, "That device hasn't reported a location yet.", null, null, null, null));
 
         var (result, failure) = await routingService.ComputeRouteAsync(
             device.CurrentLatitude.Value, device.CurrentLongitude.Value,
