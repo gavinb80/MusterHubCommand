@@ -5,7 +5,7 @@ namespace MusterHubCommandTablet;
 
 public partial class AppShell : Shell
 {
-    public AppShell(IDeviceTokenStore tokenStore)
+    public AppShell(IDeviceTokenStore tokenStore, LocationReportingService locationService)
     {
         InitializeComponent();
 
@@ -22,7 +22,10 @@ public partial class AppShell : Shell
         Loaded += async (_, _) =>
         {
             if (await tokenStore.GetAsync() is not null)
+            {
+                locationService.Start();
                 await GoToAsync("//home");
+            }
         };
     }
 }

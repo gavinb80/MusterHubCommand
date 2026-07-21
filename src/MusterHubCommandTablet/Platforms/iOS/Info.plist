@@ -33,5 +33,7 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>MusterHub Command shows this appliance's position and works out a route to the incident.</string>
 </dict>
 </plist>

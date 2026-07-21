@@ -30,6 +30,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton(new HttpClient());
 		builder.Services.AddSingleton<IDeviceTokenStore, DeviceTokenStore>();
 		builder.Services.AddSingleton<IApiClient, ApiClient>();
+		builder.Services.AddSingleton<LocationReportingService>();
 
 		builder.Services.AddSingleton<AppShell>();
 		builder.Services.AddTransient<PairingViewModel>();

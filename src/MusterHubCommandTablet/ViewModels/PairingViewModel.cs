@@ -10,7 +10,7 @@ namespace MusterHubCommandTablet.ViewModels;
 // tablet. No QR/camera flow for V1 -- a kiosk tablet mounted on an
 // appliance is set up once, rarely, by someone standing next to it with
 // the code already in hand.
-public partial class PairingViewModel(IApiClient apiClient) : BaseViewModel
+public partial class PairingViewModel(IApiClient apiClient, LocationReportingService locationService) : BaseViewModel
 {
     [ObservableProperty]
     private string pairingCode = string.Empty;
@@ -31,6 +31,7 @@ public partial class PairingViewModel(IApiClient apiClient) : BaseViewModel
                 return;
             }
 
+            locationService.Start();
             await Shell.Current.GoToAsync("//home");
         }
         catch (Exception ex)

@@ -48,6 +48,12 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<(IncidentDto? Result, string? Error)> AddNoteAsync(Guid incidentId, string text) =>
         PostAsync<AddCrewNoteRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/notes", new AddCrewNoteRequest(text, null));
 
+    public Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId) =>
+        GetAsync<RouteResponseDto>($"api/tablet/incidents/{incidentId}/route");
+
+    public Task<string?> ReportLocationAsync(double latitude, double longitude) =>
+        PostNoContentAsync("api/tablet/location", new UpdateDeviceLocationRequest(latitude, longitude));
+
     private async Task<(T? Result, string? Error)> GetAsync<T>(string path)
     {
         try
@@ -99,6 +105,34 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
         catch (Exception ex)
         {
             return (default, $"Could not reach Muster Hub Command ({ex.Message}).");
+        }
+    }
+
+    // Separate from PostAsync<TRequest, TResponse> because
+    // TabletLocationController returns 204 No Content -- ReadFromJsonAsync
+    // throws on an empty body, so there's nothing to deserialize here.
+    private async Task<string?> PostNoContentAsync<TRequest>(string path, TRequest body)
+    {
+        try
+        {
+            using var request = await BuildRequestAsync(HttpMethod.Post, path);
+            if (request is null) return RevokedError;
+            request.Content = JsonContent.Create(body, options: JsonOptions);
+
+            using var response = await httpClient.SendAsync(request);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                await tokenStore.ClearAsync();
+                return RevokedError;
+            }
+            if (!response.IsSuccessStatusCode)
+                return $"Request to {path} failed ({(int)response.StatusCode}).";
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return $"Could not reach Muster Hub Command ({ex.Message}).";
         }
     }
 

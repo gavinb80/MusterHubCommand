@@ -22,3 +22,12 @@ public record IncidentDto(
     List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates);
 
 public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId);
+
+public record RoutePointDto(double Latitude, double Longitude);
+
+public record RouteResponseDto(
+    bool Available, string? UnavailableReason,
+    double? DistanceMeters, double? DurationSeconds,
+    List<RoutePointDto>? Points);
+
+public record UpdateDeviceLocationRequest(double Latitude, double Longitude);

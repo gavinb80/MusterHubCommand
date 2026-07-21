@@ -23,9 +23,16 @@
             <Label Text="{Binding Incident.Description}" IsVisible="{Binding Incident.Description, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
 
             <WebView
+                x:Name="MapWebView"
                 Source="{Binding MapSource}"
                 IsVisible="{Binding HasLocation}"
-                HeightRequest="280" />
+                HeightRequest="280"
+                Navigated="OnMapNavigated" />
+
+            <Label
+                Text="{Binding RouteSummary}"
+                Style="{StaticResource CardSubtitleLabel}"
+                IsVisible="{Binding RouteSummary, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">

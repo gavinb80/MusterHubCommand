@@ -28,6 +28,37 @@
       maxZoom: 19,
     }).addTo(map);
     L.marker([lat, lng]).addTo(map);
+
+    // A plain coloured dot, not another pin -- needs to read as "the
+    // appliance," not "a second incident," at a glance. Matches the web
+    // console's own IncidentMap.tsx treatment.
+    var applianceIcon = L.divIcon({
+      className: "",
+      html: '<div style="width:16px;height:16px;border-radius:50%;background:#0A84FF;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+    var applianceMarker = null;
+    var routeLine = null;
+
+    // Called from IncidentDetailPage's code-behind via
+    // EvaluateJavaScriptAsync on every route refresh, rather than
+    // reassigning WebView.Source -- reloading the whole page on every 15s
+    // poll would reset the crew's pan/zoom mid-drive.
+    function setRoute(applianceLat, applianceLng, points) {
+      if (applianceMarker) map.removeLayer(applianceMarker);
+      applianceMarker = L.marker([applianceLat, applianceLng], { icon: applianceIcon }).addTo(map);
+
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = (points && points.length > 1)
+        ? L.polyline(points, { color: "#0A84FF", weight: 4, opacity: 0.8 }).addTo(map)
+        : null;
+    }
+
+    function clearRoute() {
+      if (applianceMarker) { map.removeLayer(applianceMarker); applianceMarker = null; }
+      if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+    }
   </script>
 </body>
 </html>
