@@ -24,6 +24,7 @@ public class ApplicationDbContext(
     public DbSet<IntegrationApiKey> IntegrationApiKeys => Set<IntegrationApiKey>();
     public DbSet<EmployeeStationAssignment> EmployeeStationAssignments => Set<EmployeeStationAssignment>();
     public DbSet<VehicleProfile> VehicleProfiles => Set<VehicleProfile>();
+    public DbSet<OrganisationSettings> OrganisationSettings => Set<OrganisationSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

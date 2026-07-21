@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MusterHubCommand.Api.Contracts;
 using MusterHubCommand.Api.Data;
+using MusterHubCommand.Api.Services;
 
 namespace MusterHubCommand.Api.Controllers;
 
@@ -10,7 +11,7 @@ namespace MusterHubCommand.Api.Controllers;
 // from a separate AVL system. Device-scoped by construction: a tablet can
 // only ever update its own paired device's position, never another one's.
 [Route("api/tablet/location")]
-public class TabletLocationController(ApplicationDbContext db) : DeviceControllerBase
+public class TabletLocationController(ApplicationDbContext db, GeofenceService geofenceService) : DeviceControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Update(UpdateDeviceLocationRequest request)
@@ -22,6 +23,12 @@ public class TabletLocationController(ApplicationDbContext db) : DeviceControlle
         device.CurrentLongitude = request.Longitude;
         device.LocationUpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync();
+
+        // Every report checks, not just while navigate mode is open -- an
+        // appliance that never tapped "Start navigation" still auto-arrives
+        // via the normal background cadence.
+        await geofenceService.CheckAndMarkOnSceneAsync(OrganisationId, DeviceOrgUnitId, device.Callsign, request.Latitude, request.Longitude);
+
         return NoContent();
     }
 }

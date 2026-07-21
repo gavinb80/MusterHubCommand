@@ -37,6 +37,7 @@ builder.Services.AddScoped<ICurrentOrganisationAccessor, HttpContextCurrentOrgan
 builder.Services.AddScoped<ICurrentEmployeeAccessor, HttpContextCurrentEmployeeAccessor>();
 builder.Services.AddScoped<OperatorPermissionChecker>();
 builder.Services.AddScoped<IncidentService>();
+builder.Services.AddScoped<GeofenceService>();
 builder.Services.AddScoped<IntegrationApiKeyValidator>();
 
 builder.Services.AddScoped<CoreDirectoryImportService>();

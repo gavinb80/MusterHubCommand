@@ -4,10 +4,10 @@ import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import type {
   CreateDeviceResponse, CreateIntegrationApiKeyResponse, DeviceDto, EmployeeDto,
-  IntegrationApiKeyDto, OrgUnitDto, SaveVehicleProfileRequest, VehicleProfileDto,
+  IntegrationApiKeyDto, OrganisationSettingsDto, OrgUnitDto, SaveVehicleProfileRequest, VehicleProfileDto,
 } from "../api/types";
 
-const TABS = ["Stations", "Devices", "Vehicle profiles", "Integration keys", "Operators"] as const;
+const TABS = ["Stations", "Devices", "Vehicle profiles", "Integration keys", "Operators", "General"] as const;
 type Tab = (typeof TABS)[number];
 
 function RevealOnceBanner({ label, secret, onDismiss }: { label: string; secret: string; onDismiss: () => void }) {
@@ -396,6 +396,69 @@ function OperatorsTab() {
   );
 }
 
+function GeneralTab() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const settingsQuery = useQuery({
+    queryKey: ["organisation-settings"],
+    queryFn: () => apiFetch<OrganisationSettingsDto>("/organisation-settings"),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (geofenceRadiusMeters: number) =>
+      apiFetch<OrganisationSettingsDto>("/organisation-settings", {
+        method: "PUT",
+        body: JSON.stringify({ geofenceRadiusMeters }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organisation-settings"] });
+      showToast("Settings updated");
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  if (settingsQuery.isLoading) return <p className="text-body text-(--content-secondary)">Loading...</p>;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-body text-(--content-secondary)">Org-wide defaults for the tablet app.</p>
+      <form
+        className="flex items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = new FormData(e.currentTarget);
+          const value = Number(form.get("geofenceRadiusMeters"));
+          if (value > 0) saveMutation.mutate(value);
+        }}
+      >
+        <label className="flex flex-col gap-1 text-body text-(--content-primary)">
+          Arrival geofence radius (metres)
+          <input
+            key={settingsQuery.data?.geofenceRadiusMeters}
+            name="geofenceRadiusMeters"
+            type="number"
+            min="1"
+            step="1"
+            defaultValue={settingsQuery.data?.geofenceRadiusMeters}
+            className="w-32 rounded-lg border border-(--surface-border) px-3 py-2"
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={saveMutation.isPending}
+          className="rounded-lg bg-brand-primary px-4 py-2 text-body font-semibold text-white disabled:opacity-60"
+        >
+          Save
+        </button>
+      </form>
+      <p className="text-caption text-(--content-secondary)">
+        When a paired tablet's reported GPS falls within this distance of an incident's location, that appliance
+        is automatically marked OnScene -- no action needed from the crew.
+      </p>
+    </div>
+  );
+}
+
 export function SetupPage() {
   const [tab, setTab] = useState<Tab>("Stations");
 
@@ -419,6 +482,7 @@ export function SetupPage() {
       {tab === "Vehicle profiles" && <VehicleProfilesTab />}
       {tab === "Integration keys" && <IntegrationKeysTab />}
       {tab === "Operators" && <OperatorsTab />}
+      {tab === "General" && <GeneralTab />}
     </div>
   );
 }

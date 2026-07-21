@@ -154,6 +154,10 @@ export interface RouteResponseDto {
   points: RoutePointDto[] | null;
 }
 
+export interface OrganisationSettingsDto {
+  geofenceRadiusMeters: number;
+}
+
 export interface GeocodeResponseDto {
   found: boolean;
   latitude: number | null;

@@ -5,11 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="leaflet.css" />
   <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; }
+    html, body, #viewport { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    /* Oversized relative to the viewport, and rotated from here rather
+       than the viewport itself, so heading-up mode never reveals blank
+       tile-less corners. A flat 150% is only safe for a roughly-square
+       viewport -- this tablet's map area is a wide landscape rectangle,
+       and at 90 degrees the short (height) dimension has to cover what
+       was the long (width) one, which 150% of itself doesn't reach. A
+       square of side (viewport width + viewport height), centered on the
+       viewport, safely bounds a W x H rectangle rotated by ANY angle,
+       regardless of aspect ratio -- the formula that's actually correct
+       here, not just the first thing that looked plausible. Centering
+       also puts the rotation pivot exactly where setNavRoute already
+       keeps the appliance marker (map center). */
+    #map {
+      position: absolute;
+      width: calc(100vw + 100vh);
+      height: calc(100vw + 100vh);
+      left: -50vh;
+      top: -50vw;
+    }
   </style>
 </head>
 <body>
-  <div id="map"></div>
+  <div id="viewport"><div id="map"></div></div>
   <script src="leaflet.js"></script>
   <script>
     // Bundled, not fetched -- the whole page (this HTML, Leaflet's JS/CSS,
@@ -69,6 +88,29 @@
     function setNavRoute(applianceLat, applianceLng, points) {
       setRoute(applianceLat, applianceLng, points);
       map.panTo([applianceLat, applianceLng]);
+    }
+
+    // Rotates the #map element itself, not Leaflet's own internal
+    // .leaflet-map-pane -- that pane's transform is Leaflet's own
+    // translate3d panning position, rewritten on every pan/zoom, and would
+    // silently clobber a rotation applied there. Rotating the parent
+    // instead composes cleanly with Leaflet's own transform on its child
+    // and is never fought or overwritten. Dragging is disabled in
+    // heading-up mode since Leaflet computes drag deltas in its own
+    // unrotated coordinate space -- a manual drag under rotation would
+    // feel skewed against the direction actually dragged. Known, accepted
+    // limitation: the zoom control and attribution text rotate along with
+    // everything else rather than staying upright, and the destination
+    // pin rotates rather than counter-rotating to stay vertical -- both
+    // cosmetic, only visible in the opt-in heading-up mode.
+    function setNorthUp() {
+      document.getElementById("map").style.transform = "";
+      map.dragging.enable();
+    }
+
+    function setHeadingUp(degrees) {
+      document.getElementById("map").style.transform = "rotate(" + (-degrees) + "deg)";
+      map.dragging.disable();
     }
   </script>
 </body>

@@ -57,6 +57,23 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
     [NotifyPropertyChangedFor(nameof(RouteScript))]
     private RouteResponseDto? route;
 
+    // North-up by default -- resets every fresh navigate-mode entry, no
+    // persisted preference for v1. GPS direction of travel, not the device
+    // compass: this tablet is mounted in a metal vehicle cab, where a
+    // magnetometer is notoriously unreliable, and heading only matters
+    // while actually driving anyway.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HeadingScript))]
+    [NotifyPropertyChangedFor(nameof(OrientationToggleLabel))]
+    private bool isHeadingUp;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HeadingScript))]
+    private double? heading;
+
+    private double? lastFixLatitude;
+    private double? lastFixLongitude;
+
     public bool HasLocation => Incident?.Latitude is not null && Incident?.Longitude is not null;
 
     public UrlWebViewSource? MapSource => HasLocation
@@ -100,6 +117,63 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
     {
         var minutes = Math.Round(seconds / 60);
         return minutes < 1 ? "under a minute" : $"{minutes} min";
+    }
+
+    public string OrientationToggleLabel => IsHeadingUp ? "Heading up" : "North up";
+
+    // setNorthUp() when off, or setHeadingUp() only once a heading is
+    // actually known -- toggling on before the first usable fix just
+    // leaves the map as-is rather than rotating to a meaningless 0.
+    public string HeadingScript => IsHeadingUp && Heading is { } h
+        ? $"setHeadingUp({h.ToString(CultureInfo.InvariantCulture)});"
+        : "setNorthUp();";
+
+    [RelayCommand]
+    private void ToggleOrientation() => IsHeadingUp = !IsHeadingUp;
+
+    // Deliberately NOT using the platform's own reported Location.Course --
+    // confirmed live on the Android emulator that it reports a constant 0
+    // regardless of actual movement, rather than being null when
+    // meaningless (exactly the risk flagged before building this: unverified
+    // platform behaviour). Always computed from the last fix to this one
+    // instead, but only once they're far enough apart (~8m) that the
+    // bearing means something -- GPS noise makes it jitter wildly at low
+    // speed or near-standstill. If not far enough apart yet, Heading is
+    // left untouched rather than snapped to 0 or a noisy value.
+    private void UpdateHeading(Location location)
+    {
+        if (lastFixLatitude is { } prevLat && lastFixLongitude is { } prevLng &&
+            DistanceMeters(prevLat, prevLng, location.Latitude, location.Longitude) >= 8)
+        {
+            Heading = CalculateBearing(prevLat, prevLng, location.Latitude, location.Longitude);
+        }
+
+        lastFixLatitude = location.Latitude;
+        lastFixLongitude = location.Longitude;
+    }
+
+    private static double CalculateBearing(double lat1, double lng1, double lat2, double lng2)
+    {
+        var phi1 = lat1 * Math.PI / 180;
+        var phi2 = lat2 * Math.PI / 180;
+        var deltaLambda = (lng2 - lng1) * Math.PI / 180;
+
+        var y = Math.Sin(deltaLambda) * Math.Cos(phi2);
+        var x = Math.Cos(phi1) * Math.Sin(phi2) - Math.Sin(phi1) * Math.Cos(phi2) * Math.Cos(deltaLambda);
+        return (Math.Atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    private static double DistanceMeters(double lat1, double lng1, double lat2, double lng2)
+    {
+        const double earthRadiusMetres = 6371000;
+        var phi1 = lat1 * Math.PI / 180;
+        var phi2 = lat2 * Math.PI / 180;
+        var deltaPhi = (lat2 - lat1) * Math.PI / 180;
+        var deltaLambda = (lng2 - lng1) * Math.PI / 180;
+
+        var a = Math.Sin(deltaPhi / 2) * Math.Sin(deltaPhi / 2) +
+                Math.Cos(phi1) * Math.Cos(phi2) * Math.Sin(deltaLambda / 2) * Math.Sin(deltaLambda / 2);
+        return earthRadiusMetres * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
     }
 
     public async Task OnAppearingAsync()
@@ -150,7 +224,10 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
             var location = await Geolocation.Default.GetLocationAsync(
                 new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(10)));
             if (location is not null)
+            {
                 await apiClient.ReportLocationAsync(location.Latitude, location.Longitude);
+                UpdateHeading(location);
+            }
 
             var (routeResult, routeError) = await apiClient.GetRouteAsync(IncidentId);
             if (routeError != ApiClient.RevokedError) Route = routeResult;
