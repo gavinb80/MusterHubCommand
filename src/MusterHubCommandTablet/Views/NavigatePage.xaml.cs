@@ -15,6 +15,7 @@ public partial class NavigatePage : ContentPage
         this.viewModel = viewModel;
         BindingContext = viewModel;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        viewModel.ScriptRequested += script => _ = RunScriptAsync(script);
     }
 
     protected override void OnAppearing()

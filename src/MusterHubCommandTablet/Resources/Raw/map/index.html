@@ -42,7 +42,15 @@
     var lng = parseFloat(params.get("lng"));
     var radius = parseFloat(params.get("radius"));
 
-    var map = L.map("map", { attributionControl: true }).setView([lat, lng], 16);
+    // zoomControl: false -- Leaflet's built-in +/- control anchors to
+    // #map's own top-left corner, but #map is deliberately shifted way
+    // outside the visible #viewport (see the CSS comment above) so
+    // rotation never reveals a blank corner. That leaves the stock
+    // control sitting off-screen, present in the DOM but never visible or
+    // reachable -- replaced by NavigatePage's own native zoom buttons
+    // (anchored to the unrotated viewport, like the picture buttons),
+    // calling map.zoomIn()/zoomOut() directly.
+    var map = L.map("map", { attributionControl: true, zoomControl: false }).setView([lat, lng], 16);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap contributors",
       maxZoom: 19,
@@ -75,6 +83,14 @@
     var applianceMarker = null;
     var routeLine = null;
 
+    // True while navigate mode should keep auto-panning to the appliance on
+    // every poll, same as any turn-by-turn app. Tapping "Centre on incident"
+    // or "Show both" is a deliberate look-away and must stick until the
+    // crew explicitly asks to follow again -- otherwise the very next ~12s
+    // poll's setNavRoute would silently yank the map back to the appliance
+    // mid-glance, which reads as broken, not helpful.
+    var followAppliance = true;
+
     // Called from IncidentDetailPage's code-behind via
     // EvaluateJavaScriptAsync on every route refresh, rather than
     // reassigning WebView.Source -- reloading the whole page on every 15s
@@ -102,7 +118,62 @@
     // auto-following the vehicle the way any turn-by-turn app does.
     function setNavRoute(applianceLat, applianceLng, points) {
       setRoute(applianceLat, applianceLng, points);
-      map.panTo([applianceLat, applianceLng]);
+      if (followAppliance) map.panTo([applianceLat, applianceLng]);
+    }
+
+    // The three manual camera controls (NavigatePage's picture buttons).
+    // centerOnIncident/fitBoth use the URL's own lat/lng globals since the
+    // incident location is fixed for the life of this page, never the
+    // last-drawn marker -- correct even if called before the first poll's
+    // setNavRoute has run.
+    // Same street-level zoom the map opens at (setView below). Centring on
+    // a single point is meaningless at whatever zoom "Show both" or a pinch
+    // left the map on -- a single-point look-away has to snap back to a
+    // usable close-in view, not just pan while staying zoomed out.
+    var SINGLE_POINT_ZOOM = 16;
+
+    function centerOnAppliance() {
+      followAppliance = true;
+      if (applianceMarker) map.setView(applianceMarker.getLatLng(), SINGLE_POINT_ZOOM);
+    }
+
+    function centerOnIncident() {
+      followAppliance = false;
+      map.setView([lat, lng], SINGLE_POINT_ZOOM);
+    }
+
+    function fitBoth() {
+      followAppliance = false;
+      if (!applianceMarker) { map.panTo([lat, lng]); return; }
+
+      // Includes the route's own points, not just its two endpoints -- a
+      // real road curves, and a fit against only the appliance and
+      // incident markers can leave the middle of the route outside the
+      // view whenever it bows away from the straight line between them.
+      var points = [[lat, lng], applianceMarker.getLatLng()];
+      if (routeLine) points = points.concat(routeLine.getLatLngs());
+      var bounds = L.latLngBounds(points);
+
+      // #map itself is a (100vw + 100vh) square, oversized and offset
+      // (see the CSS comment above) so heading-up rotation never reveals
+      // a blank corner -- but that means Leaflet's own container, which
+      // fitBounds sizes its zoom against, is much bigger than what
+      // #viewport actually crops to visible pixels. Left unpadded,
+      // fitBounds fits the bounds into the FULL oversized square and
+      // ends up zoomed in far tighter than what's really on screen once
+      // the crop is applied. The fix is exactly #map's own inset from
+      // #viewport on each side -- 50vh horizontally, 50vw vertically,
+      // by the same math as the CSS -- plus a little visual breathing
+      // room on top -- generous enough to also clear the incident marker's
+      // own icon, which is Leaflet's stock pin (41px tall, anchored at its
+      // bottom tip) rather than the small centered dot used for the
+      // appliance, so it extends visibly above its actual coordinate.
+      var insetX = window.innerHeight / 2 + 90;
+      var insetY = window.innerWidth / 2 + 90;
+      map.fitBounds(bounds, {
+        paddingTopLeft: [insetX, insetY],
+        paddingBottomRight: [insetX, insetY],
+      });
     }
 
     // Rotates the #map element itself, not Leaflet's own internal

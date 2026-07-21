@@ -138,6 +138,29 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
     [RelayCommand]
     private void ToggleOrientation() => IsHeadingUp = !IsHeadingUp;
 
+    // A plain event, not an [ObservableProperty] the code-behind reacts to
+    // like RouteScript/HeadingScript -- those two are set-and-compare, which
+    // this the "run it, always, even if it's the exact same script as last
+    // time" case is not; two consecutive taps on the same camera button
+    // would silently no-op the second time under CommunityToolkit's default
+    // equality-skip on ObservableProperty.
+    public event Action<string>? ScriptRequested;
+
+    [RelayCommand]
+    private void CenterOnLocation() => ScriptRequested?.Invoke("centerOnAppliance();");
+
+    [RelayCommand]
+    private void CenterOnIncident() => ScriptRequested?.Invoke("centerOnIncident();");
+
+    [RelayCommand]
+    private void ShowBoth() => ScriptRequested?.Invoke("fitBoth();");
+
+    [RelayCommand]
+    private void ZoomIn() => ScriptRequested?.Invoke("map.zoomIn();");
+
+    [RelayCommand]
+    private void ZoomOut() => ScriptRequested?.Invoke("map.zoomOut();");
+
     // Deliberately NOT using the platform's own reported Location.Course --
     // confirmed live on the Android emulator that it reports a constant 0
     // regardless of actual movement, rather than being null when
