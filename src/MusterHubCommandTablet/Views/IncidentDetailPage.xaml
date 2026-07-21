@@ -30,6 +30,11 @@
                 Navigated="OnMapNavigated" />
 
             <Label
+                Text="No location set for this incident yet."
+                Style="{StaticResource CardSubtitleLabel}"
+                IsVisible="{Binding HasLocation, Converter={StaticResource InvertedBoolConverter}}" />
+
+            <Label
                 Text="{Binding RouteSummary}"
                 Style="{StaticResource CardSubtitleLabel}"
                 IsVisible="{Binding RouteSummary, Converter={StaticResource StringNotEmptyToBoolConverter}}" />

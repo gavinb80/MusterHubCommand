@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import { IncidentMap } from "../components/IncidentMap";
+import { LocationPicker } from "../components/LocationPicker";
 import type {
   AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, IncidentDto, IncidentUpdateType,
   RouteResponseDto, SetApplianceEntry,
@@ -264,6 +265,95 @@ function RoutingPanel({ incident, onRouteChange }: {
   );
 }
 
+// Vision-fed incidents arrive with coordinates already; the manual "New
+// incident" path is the one place they can be missing, and previously the
+// map just silently disappeared with no explanation. This always shows
+// something -- the map, or an explicit prompt to add one -- and the same
+// picker doubles as a way to correct a wrong pin later.
+function LocationPanel({ incident, route, onRouteChange }: {
+  incident: IncidentDto;
+  route: { appliances: DeviceDto[]; routePoints: [number, number][] | null };
+  onRouteChange: (route: { appliances: DeviceDto[]; routePoints: [number, number][] | null }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftLat, setDraftLat] = useState<number | null>(incident.latitude);
+  const [draftLng, setDraftLng] = useState<number | null>(incident.longitude);
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+
+  const startEditing = () => {
+    setDraftLat(incident.latitude);
+    setDraftLng(incident.longitude);
+    setEditing(true);
+  };
+
+  const saveLocationMutation = useMutation({
+    mutationFn: () => apiFetch<IncidentDto>(`/incidents/${incident.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ latitude: draftLat, longitude: draftLng }),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
+      showToast("Location updated");
+      setEditing(false);
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const hasLocation = incident.latitude != null && incident.longitude != null;
+
+  if (editing) {
+    return (
+      <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card flex flex-col gap-3">
+        <h2 className="text-card-title font-semibold text-(--content-primary)">Set location</h2>
+        <LocationPicker latitude={draftLat} longitude={draftLng} onChange={(lat, lng) => { setDraftLat(lat); setDraftLng(lng); }} allowClear={false} />
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setEditing(false)} className="rounded-lg px-3 py-1.5 text-body text-(--content-secondary)">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saveLocationMutation.isPending || draftLat == null || draftLng == null}
+            onClick={() => saveLocationMutation.mutate()}
+            className="rounded-lg bg-brand-primary px-3 py-1.5 text-body font-semibold text-white disabled:opacity-60"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasLocation) {
+    return (
+      <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card flex items-center justify-between">
+        <p className="text-body text-(--content-secondary)">No location set for this incident yet.</p>
+        <button type="button" onClick={startEditing} className="text-body font-semibold text-brand-primary">
+          Add location
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <IncidentMap
+        latitude={incident.latitude!}
+        longitude={incident.longitude!}
+        label={incident.address ?? incident.incidentType}
+        appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
+        routePoints={route.routePoints ?? undefined}
+      />
+      <div className="flex items-center justify-between">
+        <RoutingPanel incident={incident} onRouteChange={onRouteChange} />
+        <button type="button" onClick={startEditing} className="text-caption text-brand-primary">
+          Edit location
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -349,18 +439,7 @@ export function IncidentDetailPage() {
         </div>
       </div>
 
-      {incident.latitude != null && incident.longitude != null && (
-        <div className="flex flex-col gap-2">
-          <IncidentMap
-            latitude={incident.latitude}
-            longitude={incident.longitude}
-            label={incident.address ?? incident.incidentType}
-            appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
-            routePoints={route.routePoints ?? undefined}
-          />
-          <RoutingPanel incident={incident} onRouteChange={setRoute} />
-        </div>
-      )}
+      <LocationPanel incident={incident} route={route} onRouteChange={setRoute} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <AttendancePanel incident={incident} />

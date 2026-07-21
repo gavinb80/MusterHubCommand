@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Dialog from "@radix-ui/react-dialog";
 import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
+import { LocationPicker } from "../components/LocationPicker";
 import type { CreateIncidentRequest, IncidentDto, IncidentSummaryDto, OrgUnitDto } from "../api/types";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -22,6 +23,8 @@ function StatusPill({ status }: { status: string }) {
 
 function NewIncidentDialog({ stations }: { stations: OrgUnitDto[] }) {
   const [open, setOpen] = useState(false);
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -34,6 +37,8 @@ function NewIncidentDialog({ stations }: { stations: OrgUnitDto[] }) {
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
       showToast("Incident created");
       setOpen(false);
+      setLatitude(null);
+      setLongitude(null);
     },
     onError: (error) => showToast(error.message, "error"),
   });
@@ -62,6 +67,8 @@ function NewIncidentDialog({ stations }: { stations: OrgUnitDto[] }) {
                 description: String(form.get("description") || "") || null,
                 address: String(form.get("address") || "") || null,
                 stationCode: String(form.get("stationCode")),
+                latitude,
+                longitude,
               });
             }}
           >
@@ -86,6 +93,10 @@ function NewIncidentDialog({ stations }: { stations: OrgUnitDto[] }) {
               Description
               <textarea name="description" className="rounded-lg border border-(--surface-border) px-3 py-2" rows={2} />
             </label>
+            <div className="flex flex-col gap-1 text-body text-(--content-primary)">
+              Location (optional -- Vision-fed incidents already carry one)
+              <LocationPicker latitude={latitude} longitude={longitude} onChange={(lat, lng) => { setLatitude(lat); setLongitude(lng); }} />
+            </div>
             <div className="mt-2 flex justify-end gap-2">
               <Dialog.Close asChild>
                 <button type="button" className="rounded-lg px-4 py-2 text-body text-(--content-secondary)">Cancel</button>
