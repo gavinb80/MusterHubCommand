@@ -309,7 +309,7 @@ function IntegrationKeysTab() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-body text-(--content-secondary)">
-        Issue a key for Vision (or any equivalent control-room system) to push incidents against
+        Issue a key for any control-room or automation system to push incidents against
         <code className="mx-1 rounded bg-(--surface-alt) px-1">POST /api/integrations/incidents</code>
         with an <code className="rounded bg-(--surface-alt) px-1">X-Api-Key</code> header.
       </p>
