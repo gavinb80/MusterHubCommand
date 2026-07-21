@@ -1,0 +1,235 @@
+-- MusterHub Command appliance vehicle profile. Based on Itinero's shipped
+-- bigtruck.lua, but bigtruck.lua's own "constraints = {maxweight, maxwidth}"
+-- declaration is never actually read anywhere in its factor_and_speed --
+-- it's speed-profile-only. This version genuinely rejects a way when the
+-- appliance's real dimensions exceed what the road is tagged for
+-- (maxweight/maxheight/maxwidth), so height-restricted bridges and
+-- weight-limited residential roads are actually avoided, not just
+-- driven at truck speeds.
+name = "__NAME__"
+vehicle_types = { "vehicle", "motor_vehicle", "motorcar" }
+constraints = { "maxweight", "maxheight", "maxwidth" }
+
+-- nil = no restriction for this appliance.
+appliance_max_weight = __MAX_WEIGHT__
+appliance_max_height = __MAX_HEIGHT__
+appliance_max_width = __MAX_WIDTH__
+
+minspeed = 30
+maxspeed = 200
+
+speed_profile = {
+	["motorway"] = 100,
+	["motorway_link"] = 100,
+	["trunk"] = 80,
+	["trunk_link"] = 80,
+	["primary"] = 80,
+	["primary_link"] = 80,
+	["secondary"] = 60,
+	["secondary_link"] = 60,
+	["tertiary"] = 60,
+	["tertiary_link"] = 60,
+	["unclassified"] = 50,
+	["residential"] = 50,
+	["service"] = 30,
+	["services"] = 30,
+	["road"] = 30,
+	["track"] = 20,
+	["living_street"] = 15,
+	["ferry"] = 5,
+	["movable"] = 5,
+	["shuttle_train"] = 10,
+	["default"] = 10
+}
+
+access_values = {
+	["private"] = false,
+	["yes"] = true,
+	["no"] = false,
+	["permissive"] = true,
+	["destination"] = true,
+	["customers"] = false,
+	["designated"] = true,
+	["public"] = true,
+	["delivery"] = true,
+	["use_sidepath"] = false
+}
+
+profile_whitelist = {
+	"highway",
+	"oneway",
+	"motorcar",
+	"motor_vehicle",
+	"vehicle",
+	"access",
+	"maxspeed",
+	"maxweight",
+	"maxheight",
+	"maxwidth",
+	"junction",
+	"barrier"
+}
+meta_whitelist = {
+	"name",
+	"bridge",
+	"tunnel"
+}
+
+profiles = {
+	{
+		name = "",
+		function_name = "factor_and_speed",
+		metric = "time"
+	},
+	{
+		name = "shortest",
+		function_name = "factor_and_speed",
+		metric = "distance"
+	}
+}
+
+barriers = {
+	["gate"] = true,
+	["bollard"] = true,
+	["fence"] = true
+}
+
+function node_restriction (attributes, results)
+	results.attributes_to_keep = {}
+	local barrier = attributes.barrier
+	if barrier == nil then
+		return
+	end
+	local barrier_type = barriers[barrier]
+	if barrier_type == nil then
+		return
+	end
+	results.attributes_to_keep.barrier = barrier
+	results.vehicle = "motorcar"
+end
+
+function can_access (attributes, result)
+	local last_access = nil
+	local access = access_values[attributes.access]
+	if access != nil then
+		result.attributes_to_keep.access = true
+		last_access = access
+	end
+	for i=0, 10 do
+		local access_key_key = vehicle_types[i]
+		local access_key = attributes[access_key_key]
+		if access_key then
+			access = access_values[access_key]
+			if access != nil then
+				result.attributes_to_keep[access_key_key] = true
+				last_access = access
+			end
+		end
+	end
+	return last_access
+end
+
+-- Strips a trailing unit ("4 m", "7.5t", "2.2 m") down to its leading
+-- number. OSM's maxheight/maxweight/maxwidth values are usually bare
+-- numbers already (metres/tonnes are the default units for these keys),
+-- but real-world tagging isn't perfectly consistent.
+function parse_restriction_value (raw)
+	if raw == nil then return nil end
+	if raw == "none" or raw == "default" or raw == "unsigned" then return nil end
+	local number = tonumber(raw)
+	if number != nil then return number end
+	local digits = string.match(raw, "^[%d%.]+")
+	if digits == nil then return nil end
+	return tonumber(digits)
+end
+
+-- Returns true if this appliance is small/light enough for a restriction
+-- tagged on the way; a road with no restriction tag always passes.
+function within_restriction (tag_value, appliance_value)
+	if appliance_value == nil then return true end -- appliance has no known limit for this dimension
+	local limit = parse_restriction_value(tag_value)
+	if limit == nil then return true end -- way carries no usable restriction
+	return appliance_value <= limit
+end
+
+function factor_and_speed (attributes, result)
+	local highway = attributes.highway
+
+	result.speed = 0
+	result.direction = 0
+	result.canstop = true
+	result.attributes_to_keep = {}
+
+	local route = attributes.route
+	if route == "ferry" then
+		highway = "ferry"
+		result.attributes_to_keep.route = highway
+	end
+
+	local highway_speed = speed_profile[highway]
+	if highway_speed then
+		result.speed = highway_speed
+		result.direction = 0
+		result.canstop = true
+		result.attributes_to_keep.highway = highway
+		if highway == "motorway" or highway == "motorway_link" then
+			result.canstop = false
+		end
+	else
+		return
+	end
+
+	if can_access (attributes, result) == false then
+		result.speed = 0
+		result.direction = 0
+		result.canstop = true
+		return
+	end
+
+	-- The actual point of this profile over the stock bigtruck one: refuse
+	-- a way outright (speed = 0, same as an access=no road) when this
+	-- appliance's real dimensions don't fit what the way is tagged for.
+	if not within_restriction(attributes.maxweight, appliance_max_weight) or
+	   not within_restriction(attributes.maxheight, appliance_max_height) or
+	   not within_restriction(attributes.maxwidth, appliance_max_width) then
+		result.speed = 0
+		result.direction = 0
+		result.canstop = true
+		return
+	end
+	result.attributes_to_keep.maxweight = true
+	result.attributes_to_keep.maxheight = true
+	result.attributes_to_keep.maxwidth = true
+
+	if attributes.maxspeed then
+		local speed = itinero.parsespeed (attributes.maxspeed)
+		if speed then
+			result.speed = speed * 0.9
+			result.attributes_to_keep.maxspeed = true
+		end
+	end
+
+	local junction = attributes.junction
+	if junction == "roundabout" then
+		result.direction = 1
+		result.attributes_to_keep.junction = true
+	end
+	local direction = is_oneway (attributes, "oneway")
+	if direction != nil then
+		result.direction = direction
+		result.attributes_to_keep.oneway = true
+	end
+end
+
+function is_oneway (attributes, name)
+	local oneway = attributes[name]
+	if oneway != nil then
+		if oneway == "yes" or oneway == "true" or oneway == "1" then
+			return 1
+		end
+		if oneway == "-1" then
+			return 2
+		end
+	end
+	return nil
+end

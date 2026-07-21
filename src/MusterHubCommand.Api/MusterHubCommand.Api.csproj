@@ -10,6 +10,8 @@
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.23" />
     <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
+    <PackageReference Include="Itinero" Version="1.5.1" />
+    <PackageReference Include="Itinero.IO.Osm" Version="1.5.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.7" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.7" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
@@ -24,6 +26,16 @@
     <PackageReference Include="Microsoft.OpenApi" Version="2.9.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
     <PackageReference Include="Sentry.AspNetCore" Version="6.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The appliance vehicle-profile Lua template, read as text at
+         startup and templated per VehicleProfile, not compiled in. -->
+    <None Include="Routing\appliance.lua.template" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Dev-only routerdb fixture, a small Tavistock-area extract.
+         Prod overrides Routing:RouterDbPath to a real regional one
+         uploaded separately, see provision-prod.sh. -->
+    <None Include="App_Data\dev-tavistock.routerdb" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

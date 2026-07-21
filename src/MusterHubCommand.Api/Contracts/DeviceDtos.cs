@@ -1,8 +1,14 @@
 namespace MusterHubCommand.Api.Contracts;
 
-public record DeviceDto(Guid Id, string Label, Guid OrgUnitId, string OrgUnitName, DateTimeOffset CreatedAtUtc, DateTimeOffset? LastSeenAtUtc, bool IsActive);
+public record DeviceDto(
+    Guid Id, string Label, Guid OrgUnitId, string OrgUnitName,
+    Guid? VehicleProfileId, string? VehicleProfileName,
+    double? CurrentLatitude, double? CurrentLongitude, DateTimeOffset? LocationUpdatedAtUtc,
+    DateTimeOffset CreatedAtUtc, DateTimeOffset? LastSeenAtUtc, bool IsActive);
 
 public record CreateDeviceRequest(string Label, Guid OrgUnitId);
+
+public record UpdateDeviceLocationRequest(double Latitude, double Longitude);
 
 // The plaintext token is returned exactly once, at creation -- same
 // "show once, never again" convention as every other secret-issuance flow

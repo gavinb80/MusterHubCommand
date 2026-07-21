@@ -61,6 +61,7 @@ az webapp config appsettings set -g $RG -n $APP -o none --settings \
   Core__Issuer=MusterHub \
   Core__Audience=MusterHubApp \
   Core__NotificationsUri="$CORE/api/integrations/notifications" \
+  Routing__RouterDbPath="/home/data/command.routerdb" \
   "ConnectionStrings__Default=@Microsoft.KeyVault(SecretUri=https://$VAULT.vault.azure.net/secrets/command-db-connection/)" \
   "Core__NotificationApiKey=@Microsoft.KeyVault(SecretUri=https://$VAULT.vault.azure.net/secrets/command-notification-api-key/)"
 echo "    ready"
@@ -87,4 +88,19 @@ Note: unlike Skills, Command's own Vision-facing integration keys are
 issued per-organisation from Setup > Integration keys (database-backed,
 see IntegrationApiKeysController) -- there is no shared appsettings
 integration secret to provision here.
+
+Appliance routing (Itinero) needs a real .routerdb uploaded to
+/home/data/command.routerdb -- /home is the one part of an App Service's
+filesystem that survives a redeploy, so this is a one-off upload, not
+part of deploy.sh. Build one with tools/RouterDbBuilder against a real
+regional OSM extract (Geofabrik, e.g. south-west-england-latest.osm.pbf
+for the DSFRS pilot -- Geofabrik wasn't reachable from this dev sandbox,
+so only a small Tavistock-area dev fixture exists so far, committed at
+src/MusterHubCommand.Api/App_Data/dev-tavistock.routerdb). Until a real
+one is uploaded, RoutingService.IsAvailable is false and every route
+request returns a clean "not available" response -- the rest of the app
+works fine without it.
+
+  dotnet run --project tools/RouterDbBuilder -- south-west-england-latest.osm.pbf command.routerdb
+  az webapp ssh -g rg-musterhub -n musterhub-command   # or Kudu/FTP, to upload command.routerdb to /home/data/
 NOTES

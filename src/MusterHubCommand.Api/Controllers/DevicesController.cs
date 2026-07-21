@@ -24,9 +24,35 @@ public class DevicesController(
     {
         if (await RequireOperatorAsync() is ActionResult denied) return denied;
 
-        var devices = await db.Devices.Include(d => d.OrgUnit).OrderBy(d => d.Label).ToListAsync();
-        return Ok(devices.Select(d => new DeviceDto(d.Id, d.Label, d.OrgUnitId, d.OrgUnit!.Name, d.CreatedAtUtc, d.LastSeenAtUtc, d.IsActive)));
+        var devices = await db.Devices.Include(d => d.OrgUnit).Include(d => d.VehicleProfile).OrderBy(d => d.Label).ToListAsync();
+        return Ok(devices.Select(ToDto));
     }
+
+    // Assigning null clears it -- back to unrestricted routing, same as a
+    // device that was never given one.
+    [HttpPut("{id}/vehicle-profile")]
+    public async Task<ActionResult<DeviceDto>> SetVehicleProfile(Guid id, [FromBody] Guid? vehicleProfileId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var device = await db.Devices.Include(d => d.OrgUnit).FirstOrDefaultAsync(d => d.Id == id);
+        if (device is null) return NotFound();
+
+        if (vehicleProfileId is not null && !await db.VehicleProfiles.AnyAsync(p => p.Id == vehicleProfileId))
+            return BadRequest("No such vehicle profile.");
+
+        device.VehicleProfileId = vehicleProfileId;
+        await db.SaveChangesAsync();
+
+        device.VehicleProfile = vehicleProfileId is null ? null : await db.VehicleProfiles.FirstAsync(p => p.Id == vehicleProfileId);
+        return Ok(ToDto(device));
+    }
+
+    private static DeviceDto ToDto(Device d) => new(
+        d.Id, d.Label, d.OrgUnitId, d.OrgUnit!.Name,
+        d.VehicleProfileId, d.VehicleProfile?.Name,
+        d.CurrentLatitude, d.CurrentLongitude, d.LocationUpdatedAtUtc,
+        d.CreatedAtUtc, d.LastSeenAtUtc, d.IsActive);
 
     [HttpPost]
     public async Task<ActionResult<CreateDeviceResponse>> Create(CreateDeviceRequest request)

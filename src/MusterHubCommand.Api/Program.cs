@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Tokens;
 using MusterHubCommand.Api.Configuration;
 using MusterHubCommand.Api.Data;
+using MusterHubCommand.Api.Routing;
 using MusterHubCommand.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,6 +41,12 @@ builder.Services.AddScoped<IntegrationApiKeyValidator>();
 
 builder.Services.AddScoped<CoreDirectoryImportService>();
 builder.Services.AddHttpClient<ICoreDirectoryClient, HttpCoreDirectoryClient>();
+
+// Loads its routerdb once and stays a singleton for the app's lifetime --
+// deserializing an OSM-derived RouterDb isn't cheap, and Router/RouterDb
+// are meant to be shared across requests.
+builder.Services.Configure<RoutingOptions>(builder.Configuration.GetSection(RoutingOptions.SectionName));
+builder.Services.AddSingleton<RoutingService>();
 
 builder.Services.AddHttpClient<CoreNotificationService>((sp, client) =>
 {

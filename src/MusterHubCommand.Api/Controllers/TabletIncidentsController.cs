@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using MusterHubCommand.Api.Contracts;
+using MusterHubCommand.Api.Data;
 using MusterHubCommand.Api.Data.Entities;
+using MusterHubCommand.Api.Routing;
 using MusterHubCommand.Api.Services;
 
 namespace MusterHubCommand.Api.Controllers;
@@ -12,7 +15,7 @@ namespace MusterHubCommand.Api.Controllers;
 // write is a crew note -- everything else about an incident (status,
 // attendance, control-room updates) is Vision/operator-authored.
 [Route("api/tablet/incidents")]
-public class TabletIncidentsController(IncidentService incidentService) : DeviceControllerBase
+public class TabletIncidentsController(IncidentService incidentService, ApplicationDbContext db, RoutingService routingService) : DeviceControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<IncidentSummaryDto>>> List()
@@ -39,5 +42,28 @@ public class TabletIncidentsController(IncidentService incidentService) : Device
             OrganisationId, id, IncidentUpdateSource.Crew,
             null, request.AuthorEmployeeId, request.Text, IncidentUpdateType.Note);
         return Ok(updated!.ToDto());
+    }
+
+    // From this device's own last-reported GPS to the incident, using
+    // whatever VehicleProfile this appliance is set up with in Setup.
+    [HttpGet("{id}/route")]
+    public async Task<ActionResult<RouteResponseDto>> GetRoute(Guid id)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || incident.OrgUnitId != DeviceOrgUnitId) return NotFound();
+        if (incident.Latitude is null || incident.Longitude is null)
+            return Ok(new RouteResponseDto(false, "This incident has no location to route to.", null, null, null));
+
+        var device = await db.Devices.IgnoreQueryFilters()
+            .Include(d => d.VehicleProfile)
+            .FirstOrDefaultAsync(d => d.Id == DeviceId);
+        if (device?.CurrentLatitude is null || device.CurrentLongitude is null)
+            return Ok(new RouteResponseDto(false, "This tablet hasn't reported a location yet.", null, null, null));
+
+        var (result, failure) = await routingService.ComputeRouteAsync(
+            device.CurrentLatitude.Value, device.CurrentLongitude.Value,
+            incident.Latitude.Value, incident.Longitude.Value, device.VehicleProfile);
+
+        return Ok(result is not null ? result.ToDto() : failure!.Value.ToUnavailableDto());
     }
 }

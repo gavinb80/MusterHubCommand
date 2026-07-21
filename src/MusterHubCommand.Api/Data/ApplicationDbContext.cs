@@ -23,6 +23,7 @@ public class ApplicationDbContext(
     public DbSet<IncidentUpdate> IncidentUpdates => Set<IncidentUpdate>();
     public DbSet<IntegrationApiKey> IntegrationApiKeys => Set<IntegrationApiKey>();
     public DbSet<EmployeeStationAssignment> EmployeeStationAssignments => Set<EmployeeStationAssignment>();
+    public DbSet<VehicleProfile> VehicleProfiles => Set<VehicleProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,7 @@ public class ApplicationDbContext(
         {
             e.HasIndex(d => d.TokenHash).IsUnique();
             e.HasOne(d => d.OrgUnit).WithMany().HasForeignKey(d => d.OrgUnitId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(d => d.VehicleProfile).WithMany().HasForeignKey(d => d.VehicleProfileId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<CommandOperator>(e =>

@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using MusterHubCommand.Api.Contracts;
+using MusterHubCommand.Api.Data;
 using MusterHubCommand.Api.Data.Entities;
+using MusterHubCommand.Api.Routing;
 using MusterHubCommand.Api.Services;
 
 namespace MusterHubCommand.Api.Controllers;
@@ -13,6 +16,8 @@ namespace MusterHubCommand.Api.Controllers;
 [Route("api/incidents")]
 public class IncidentsController(
     IncidentService incidentService,
+    ApplicationDbContext db,
+    RoutingService routingService,
     ICurrentOrganisationAccessor organisationAccessor,
     ICurrentEmployeeAccessor currentEmployeeAccessor,
     OperatorPermissionChecker operatorChecker)
@@ -89,5 +94,31 @@ public class IncidentsController(
             OrganisationId, id, IncidentUpdateSource.ControlRoom,
             request.AuthorName, null, request.Text, request.UpdateType);
         return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    // Same route computation as the tablet's own GET .../route, but for a
+    // control-room operator picking any device (not just "this tablet's
+    // own") to check against -- e.g. comparing which of two attending
+    // appliances is genuinely closer once road access is accounted for.
+    [HttpGet("{id}/route")]
+    public async Task<ActionResult<RouteResponseDto>> GetRoute(Guid id, [FromQuery] Guid deviceId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null) return NotFound();
+        if (incident.Latitude is null || incident.Longitude is null)
+            return Ok(new RouteResponseDto(false, "This incident has no location to route to.", null, null, null));
+
+        var device = await db.Devices.Include(d => d.VehicleProfile).FirstOrDefaultAsync(d => d.Id == deviceId);
+        if (device is null) return NotFound();
+        if (device.CurrentLatitude is null || device.CurrentLongitude is null)
+            return Ok(new RouteResponseDto(false, "That device hasn't reported a location yet.", null, null, null));
+
+        var (result, failure) = await routingService.ComputeRouteAsync(
+            device.CurrentLatitude.Value, device.CurrentLongitude.Value,
+            incident.Latitude.Value, incident.Longitude.Value, device.VehicleProfile);
+
+        return Ok(result is not null ? result.ToDto() : failure!.Value.ToUnavailableDto());
     }
 }

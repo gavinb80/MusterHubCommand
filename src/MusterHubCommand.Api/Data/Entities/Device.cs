@@ -20,6 +20,19 @@ public class Device : ITenantScoped
     public required string Label { get; set; }
     public required string TokenHash { get; set; }
 
+    // Which appliance's physical dimensions to route with -- null means
+    // "no known restriction," routed as an ordinary vehicle. Set from
+    // Setup, same place the device itself is paired.
+    public Guid? VehicleProfileId { get; set; }
+    public VehicleProfile? VehicleProfile { get; set; }
+
+    // The appliance's own GPS, reported periodically by the tablet mounted
+    // on it (POST /api/tablet/location) -- not from any separate AVL
+    // system. Null until the tablet's first report lands.
+    public double? CurrentLatitude { get; set; }
+    public double? CurrentLongitude { get; set; }
+    public DateTimeOffset? LocationUpdatedAtUtc { get; set; }
+
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastSeenAtUtc { get; set; }
     public bool IsActive { get; set; } = true;
