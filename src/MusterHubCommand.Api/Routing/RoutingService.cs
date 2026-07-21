@@ -79,11 +79,36 @@ public class RoutingService
 
         try
         {
-            var start = router.Resolve(routeProfile, (float)fromLatitude, (float)fromLongitude, 250);
-            var end = router.Resolve(routeProfile, (float)toLatitude, (float)toLongitude, 250);
+            var start = ResolveWithFallback(routeProfile, fromLatitude, fromLongitude);
+            var end = ResolveWithFallback(routeProfile, toLatitude, toLongitude);
             var route = router.Calculate(routeProfile, start, end);
 
             var points = route.Shape.Select(c => new RoutePoint(c.Latitude, c.Longitude)).ToList();
+
+            // Resolve snaps each endpoint to the nearest ROUTABLE road, which
+            // for a point genuinely set back from any tagged road (a
+            // driveway, a field entrance) can leave a small, real gap
+            // between the route's own end and the true coordinate. A short
+            // straight final/first segment closes that so the crew sees the
+            // line actually reach the incident, not just the nearest road.
+            // Deliberately bounded, though -- confirmed live at Grenofen
+            // that a LARGE gap here means the underlying road data is
+            // missing a real stretch of road (fixed by rebuilding the
+            // routerdb from a fuller OSM extract, not papered over here),
+            // and stretching a straight line across country to cover that
+            // case draws a route that doesn't exist.
+            const double maxBridgeMeters = 150;
+            if (points.Count > 0)
+            {
+                var startGap = DistanceMeters(points[0].Latitude, points[0].Longitude, fromLatitude, fromLongitude);
+                if (startGap is > 5 and <= maxBridgeMeters) points.Insert(0, new RoutePoint(fromLatitude, fromLongitude));
+            }
+            if (points.Count > 0)
+            {
+                var endGap = DistanceMeters(points[^1].Latitude, points[^1].Longitude, toLatitude, toLongitude);
+                if (endGap is > 5 and <= maxBridgeMeters) points.Add(new RoutePoint(toLatitude, toLongitude));
+            }
+
             var instructions = BuildInstructions(routeProfile, route);
             return Task.FromResult<(RouteResult?, RouteFailureReason?)>(
                 (new RouteResult(route.TotalDistance, route.TotalTime, points, instructions), null));
@@ -99,6 +124,36 @@ public class RoutingService
             return Task.FromResult<(RouteResult?, RouteFailureReason?)>((null, RouteFailureReason.NoRouteFound));
         }
     }
+
+    // A tight 250m snap is right for the common case (an appliance sat at a
+    // station forecourt, an incident on a mapped street) but too tight for
+    // a rural incident set back from the nearest tagged road -- confirmed
+    // live against the Tavistock extract: a Grenofen address resolved at
+    // 1000m and nowhere below it. Only widens the search when the tight
+    // radius genuinely fails, so town-centre snapping stays as precise as
+    // before.
+    private static readonly int[] ResolveRadiiMeters = [250, 1000, 5000];
+
+    private RouterPoint ResolveWithFallback(Itinero.Profiles.IProfileInstance routeProfile, double latitude, double longitude)
+    {
+        for (var i = 0; i < ResolveRadiiMeters.Length; i++)
+        {
+            try
+            {
+                return router!.Resolve(routeProfile, (float)latitude, (float)longitude, ResolveRadiiMeters[i]);
+            }
+            catch (ResolveFailedException) when (i < ResolveRadiiMeters.Length - 1)
+            {
+            }
+        }
+
+        throw new ResolveFailedException($"Could not resolve point at [{latitude}, {longitude}] within {ResolveRadiiMeters[^1]}m.");
+    }
+
+    // Reuses Itinero's own estimator (already relied on in BuildInstructions
+    // below) rather than a separate haversine implementation.
+    private static double DistanceMeters(double lat1, double lon1, double lat2, double lon2) =>
+        Coordinate.DistanceEstimateInMeter([new Coordinate((float)lat1, (float)lon1), new Coordinate((float)lat2, (float)lon2)]);
 
     // Turn-by-turn text for the tablet's navigate mode. Best-effort: an
     // instruction-generation failure (e.g. Route.Shape too short, or a
