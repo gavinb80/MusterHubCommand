@@ -1,4 +1,4 @@
-import { MapContainer, Marker, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Polyline, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import markerIconUrl from "leaflet/dist/images/marker-icon.png";
 import markerIcon2xUrl from "leaflet/dist/images/marker-icon-2x.png";
@@ -15,7 +15,31 @@ const markerIcon = L.icon({
   iconAnchor: [12, 41],
 });
 
-export function IncidentMap({ latitude, longitude, label }: { latitude: number; longitude: number; label: string }) {
+// A plain coloured dot, not another pin -- an appliance's position needs to
+// read as visually distinct from the incident's own marker at a glance,
+// not as "a second incident."
+const applianceIcon = L.divIcon({
+  className: "",
+  html: '<div style="width:16px;height:16px;border-radius:50%;background:#0A84FF;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+export interface AppliancePosition {
+  label: string;
+  latitude: number;
+  longitude: number;
+}
+
+export function IncidentMap({
+  latitude, longitude, label, appliances, routePoints,
+}: {
+  latitude: number;
+  longitude: number;
+  label: string;
+  appliances?: AppliancePosition[];
+  routePoints?: [number, number][];
+}) {
   return (
     <MapContainer
       center={[latitude, longitude]}
@@ -28,6 +52,12 @@ export function IncidentMap({ latitude, longitude, label }: { latitude: number; 
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <Marker position={[latitude, longitude]} icon={markerIcon} title={label} />
+      {appliances?.map((a, i) => (
+        <Marker key={i} position={[a.latitude, a.longitude]} icon={applianceIcon} title={a.label} />
+      ))}
+      {routePoints && routePoints.length > 1 && (
+        <Polyline positions={routePoints} pathOptions={{ color: "#0A84FF", weight: 4, opacity: 0.8 }} />
+      )}
     </MapContainer>
   );
 }

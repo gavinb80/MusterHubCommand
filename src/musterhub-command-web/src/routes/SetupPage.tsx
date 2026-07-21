@@ -4,10 +4,10 @@ import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import type {
   CreateDeviceResponse, CreateIntegrationApiKeyResponse, DeviceDto, EmployeeDto,
-  IntegrationApiKeyDto, OrgUnitDto,
+  IntegrationApiKeyDto, OrgUnitDto, SaveVehicleProfileRequest, VehicleProfileDto,
 } from "../api/types";
 
-const TABS = ["Stations", "Devices", "Integration keys", "Operators"] as const;
+const TABS = ["Stations", "Devices", "Vehicle profiles", "Integration keys", "Operators"] as const;
 type Tab = (typeof TABS)[number];
 
 function RevealOnceBanner({ label, secret, onDismiss }: { label: string; secret: string; onDismiss: () => void }) {
@@ -48,6 +48,7 @@ function DevicesTab() {
   const devicesQuery = useQuery({ queryKey: ["devices"], queryFn: () => apiFetch<DeviceDto[]>("/devices") });
   const stationsQuery = useQuery({ queryKey: ["org-units"], queryFn: () => apiFetch<OrgUnitDto[]>("/org-units") });
   const stations = (stationsQuery.data ?? []).filter((u) => u.orgUnitTypeName === "Station");
+  const profilesQuery = useQuery({ queryKey: ["vehicle-profiles"], queryFn: () => apiFetch<VehicleProfileDto[]>("/vehicle-profiles") });
 
   const createMutation = useMutation({
     mutationFn: (body: { label: string; orgUnitId: string }) =>
@@ -68,11 +69,22 @@ function DevicesTab() {
     onError: (error) => showToast(error.message, "error"),
   });
 
+  const setProfileMutation = useMutation({
+    mutationFn: ({ id, vehicleProfileId }: { id: string; vehicleProfileId: string | null }) =>
+      apiFetch<DeviceDto>(`/devices/${id}/vehicle-profile`, { method: "PUT", body: JSON.stringify(vehicleProfileId) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["devices"] });
+      showToast("Vehicle profile updated");
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-body text-(--content-secondary)">
         Pair an appliance tablet by registering it here, then enter the pairing code shown once into the
-        tablet's own first-run screen.
+        tablet's own first-run screen. Assign a vehicle profile so routes on the incident map respect this
+        appliance's real dimensions.
       </p>
 
       {revealed && (
@@ -112,17 +124,132 @@ function DevicesTab() {
               <p className="text-caption text-(--content-secondary)">
                 {d.orgUnitName} &middot; {d.isActive ? "Active" : "Revoked"}
                 {d.lastSeenAtUtc && ` · last seen ${new Date(d.lastSeenAtUtc).toLocaleString()}`}
+                {d.locationUpdatedAtUtc && ` · GPS updated ${new Date(d.locationUpdatedAtUtc).toLocaleString()}`}
               </p>
             </div>
-            {d.isActive && (
-              <button
-                type="button"
-                onClick={() => { if (confirm(`Revoke "${d.label}"? It will be signed out immediately.`)) revokeMutation.mutate(d.id); }}
-                className="text-body text-status-hazard"
-              >
-                Revoke
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-caption text-(--content-secondary)">
+                Vehicle profile
+                <select
+                  value={d.vehicleProfileId ?? ""}
+                  onChange={(e) => setProfileMutation.mutate({ id: d.id, vehicleProfileId: e.target.value || null })}
+                  className="rounded-lg border border-(--surface-border) px-2 py-1"
+                >
+                  <option value="">Unrestricted</option>
+                  {profilesQuery.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+              {d.isActive && (
+                <button
+                  type="button"
+                  onClick={() => { if (confirm(`Revoke "${d.label}"? It will be signed out immediately.`)) revokeMutation.mutate(d.id); }}
+                  className="text-body text-status-hazard"
+                >
+                  Revoke
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VehicleProfilesTab() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const profilesQuery = useQuery({ queryKey: ["vehicle-profiles"], queryFn: () => apiFetch<VehicleProfileDto[]>("/vehicle-profiles") });
+
+  const createMutation = useMutation({
+    mutationFn: (body: SaveVehicleProfileRequest) => apiFetch<VehicleProfileDto>("/vehicle-profiles", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vehicle-profiles"] });
+      showToast("Vehicle profile added");
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/vehicle-profiles/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vehicle-profiles"] });
+      showToast("Vehicle profile deleted");
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const parseOptionalNumber = (value: FormDataEntryValue | null) => {
+    const trimmed = String(value ?? "").trim();
+    return trimmed === "" ? null : Number(trimmed);
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-body text-(--content-secondary)">
+        An appliance class's real physical limits. Routes computed for a device assigned one of these
+        genuinely avoid a road tagged below what the appliance can fit or carry -- not just a slower
+        speed assumption. Leave a field blank for "no known restriction."
+      </p>
+
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = new FormData(e.currentTarget);
+          createMutation.mutate({
+            name: String(form.get("name")),
+            maxWeightTonnes: parseOptionalNumber(form.get("maxWeightTonnes")),
+            maxHeightMetres: parseOptionalNumber(form.get("maxHeightMetres")),
+            maxWidthMetres: parseOptionalNumber(form.get("maxWidthMetres")),
+          });
+          e.currentTarget.reset();
+        }}
+      >
+        <label className="flex flex-col gap-1 text-body text-(--content-primary)">
+          Name
+          <input name="name" required placeholder="Aerial Ladder Platform" className="w-48 rounded-lg border border-(--surface-border) px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-body text-(--content-primary)">
+          Max weight (t)
+          <input name="maxWeightTonnes" type="number" step="0.1" min="0" className="w-28 rounded-lg border border-(--surface-border) px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-body text-(--content-primary)">
+          Max height (m)
+          <input name="maxHeightMetres" type="number" step="0.1" min="0" className="w-28 rounded-lg border border-(--surface-border) px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-body text-(--content-primary)">
+          Max width (m)
+          <input name="maxWidthMetres" type="number" step="0.1" min="0" className="w-28 rounded-lg border border-(--surface-border) px-3 py-2" />
+        </label>
+        <button type="submit" disabled={createMutation.isPending} className="rounded-lg bg-brand-primary px-4 py-2 text-body font-semibold text-white disabled:opacity-60">
+          Add profile
+        </button>
+      </form>
+
+      <div className="flex flex-col gap-2">
+        {profilesQuery.data?.length === 0 && (
+          <p className="text-body text-(--content-secondary)">No vehicle profiles yet -- devices route as an unrestricted vehicle.</p>
+        )}
+        {profilesQuery.data?.map((p) => (
+          <div key={p.id} className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-3">
+            <div>
+              <p className="text-body font-medium text-(--content-primary)">{p.name}</p>
+              <p className="text-caption text-(--content-secondary)">
+                {[
+                  p.maxWeightTonnes != null ? `max ${p.maxWeightTonnes}t` : null,
+                  p.maxHeightMetres != null ? `max ${p.maxHeightMetres}m tall` : null,
+                  p.maxWidthMetres != null ? `max ${p.maxWidthMetres}m wide` : null,
+                ].filter(Boolean).join(" · ") || "No restrictions set"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { if (confirm(`Delete "${p.name}"? Devices using it fall back to unrestricted routing.`)) deleteMutation.mutate(p.id); }}
+              className="text-body text-status-hazard"
+            >
+              Delete
+            </button>
           </div>
         ))}
       </div>
@@ -265,6 +392,7 @@ export function SetupPage() {
       </div>
       {tab === "Stations" && <StationsTab />}
       {tab === "Devices" && <DevicesTab />}
+      {tab === "Vehicle profiles" && <VehicleProfilesTab />}
       {tab === "Integration keys" && <IntegrationKeysTab />}
       {tab === "Operators" && <OperatorsTab />}
     </div>

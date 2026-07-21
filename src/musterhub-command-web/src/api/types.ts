@@ -115,9 +115,42 @@ export interface DeviceDto {
   label: string;
   orgUnitId: string;
   orgUnitName: string;
+  vehicleProfileId: string | null;
+  vehicleProfileName: string | null;
+  currentLatitude: number | null;
+  currentLongitude: number | null;
+  locationUpdatedAtUtc: string | null;
   createdAtUtc: string;
   lastSeenAtUtc: string | null;
   isActive: boolean;
+}
+
+export interface VehicleProfileDto {
+  id: string;
+  name: string;
+  maxWeightTonnes: number | null;
+  maxHeightMetres: number | null;
+  maxWidthMetres: number | null;
+}
+
+export interface SaveVehicleProfileRequest {
+  name: string;
+  maxWeightTonnes?: number | null;
+  maxHeightMetres?: number | null;
+  maxWidthMetres?: number | null;
+}
+
+export interface RoutePointDto {
+  latitude: number;
+  longitude: number;
+}
+
+export interface RouteResponseDto {
+  available: boolean;
+  unavailableReason: string | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  points: RoutePointDto[] | null;
 }
 
 export interface CreateDeviceResponse {

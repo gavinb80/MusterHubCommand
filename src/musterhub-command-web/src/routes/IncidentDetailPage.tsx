@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import { IncidentMap } from "../components/IncidentMap";
 import type {
-  AddIncidentUpdateRequest, ApplianceStatus, IncidentDto, IncidentUpdateType, SetApplianceEntry,
+  AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, IncidentDto, IncidentUpdateType,
+  RouteResponseDto, SetApplianceEntry,
 } from "../api/types";
 
 const APPLIANCE_STATUSES: ApplianceStatus[] = ["Mobilised", "EnRoute", "OnScene", "StoodDown"];
@@ -193,6 +194,76 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
   );
 }
 
+function formatDistance(metres: number) {
+  return metres >= 1000 ? `${(metres / 1000).toFixed(1)}km` : `${Math.round(metres)}m`;
+}
+
+function formatDuration(seconds: number) {
+  const minutes = Math.round(seconds / 60);
+  return minutes < 1 ? "under a minute" : `${minutes} min`;
+}
+
+// Which appliance to route from, plus every device at this station with a
+// known position -- so the map shows "where are our own appliances" even
+// before an operator has picked one to check a route against.
+function RoutingPanel({ incident, onRouteChange }: {
+  incident: IncidentDto;
+  onRouteChange: (route: { appliances: DeviceDto[]; routePoints: [number, number][] | null }) => void;
+}) {
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+
+  const devicesQuery = useQuery({ queryKey: ["devices"], queryFn: () => apiFetch<DeviceDto[]>("/devices") });
+  const stationDevices = (devicesQuery.data ?? []).filter(
+    (d) => d.orgUnitId === incident.orgUnitId && d.currentLatitude != null && d.currentLongitude != null,
+  );
+
+  useEffect(() => {
+    if (!selectedDeviceId && stationDevices.length > 0) setSelectedDeviceId(stationDevices[0].id);
+  }, [stationDevices.length]);
+
+  const routeQuery = useQuery({
+    queryKey: ["incident-route", incident.id, selectedDeviceId],
+    queryFn: () => apiFetch<RouteResponseDto>(`/incidents/${incident.id}/route?deviceId=${selectedDeviceId}`),
+    enabled: !!selectedDeviceId && incident.latitude != null && incident.longitude != null,
+  });
+
+  useEffect(() => {
+    const points: [number, number][] | null = routeQuery.data?.available && routeQuery.data.points
+      ? routeQuery.data.points.map((p) => [p.latitude, p.longitude])
+      : null;
+    onRouteChange({ appliances: stationDevices, routePoints: points });
+  }, [routeQuery.data, stationDevices.length]);
+
+  if (stationDevices.length === 0) {
+    return (
+      <p className="text-caption text-(--content-secondary)">
+        No paired tablet at this station has reported a GPS position yet -- route unavailable.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-caption text-(--content-secondary)">
+      <label className="flex items-center gap-2">
+        Route from
+        <select
+          value={selectedDeviceId}
+          onChange={(e) => setSelectedDeviceId(e.target.value)}
+          className="rounded-lg border border-(--surface-border) px-2 py-1"
+        >
+          {stationDevices.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+        </select>
+      </label>
+      {routeQuery.data?.available && routeQuery.data.distanceMeters != null && routeQuery.data.durationSeconds != null && (
+        <span className="font-semibold text-(--content-primary)">
+          {formatDistance(routeQuery.data.distanceMeters)} &middot; {formatDuration(routeQuery.data.durationSeconds)}
+        </span>
+      )}
+      {routeQuery.data && !routeQuery.data.available && <span>{routeQuery.data.unavailableReason}</span>}
+    </div>
+  );
+}
+
 export function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -223,6 +294,10 @@ export function IncidentDetailPage() {
       navigate("/");
     },
     onError: (error) => showToast(error.message, "error"),
+  });
+
+  const [route, setRoute] = useState<{ appliances: DeviceDto[]; routePoints: [number, number][] | null }>({
+    appliances: [], routePoints: null,
   });
 
   if (incidentQuery.isLoading) return <p className="text-body text-(--content-secondary)">Loading...</p>;
@@ -275,7 +350,16 @@ export function IncidentDetailPage() {
       </div>
 
       {incident.latitude != null && incident.longitude != null && (
-        <IncidentMap latitude={incident.latitude} longitude={incident.longitude} label={incident.address ?? incident.incidentType} />
+        <div className="flex flex-col gap-2">
+          <IncidentMap
+            latitude={incident.latitude}
+            longitude={incident.longitude}
+            label={incident.address ?? incident.incidentType}
+            appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
+            routePoints={route.routePoints ?? undefined}
+          />
+          <RoutingPanel incident={incident} onRouteChange={setRoute} />
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
