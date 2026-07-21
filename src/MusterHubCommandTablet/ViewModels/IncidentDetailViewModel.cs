@@ -52,6 +52,11 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     [NotifyPropertyChangedFor(nameof(RouteSummary))]
     private RouteResponseDto? route;
 
+    // Org-wide, essentially static -- fetched once, not on every 15s poll.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MapSource))]
+    private double? geofenceRadiusMeters;
+
     public bool HasLocation => Incident?.Latitude is not null && Incident?.Longitude is not null;
 
     // "139m · under a minute", or the API's own explanation when there's no
@@ -97,18 +102,33 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     public UrlWebViewSource? MapSource => HasLocation
         ? new UrlWebViewSource
         {
-            Url = $"map/index.html?lat={Incident!.Latitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}&lng={Incident.Longitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+            Url = $"map/index.html?lat={Incident!.Latitude!.Value.ToString(CultureInfo.InvariantCulture)}&lng={Incident.Longitude!.Value.ToString(CultureInfo.InvariantCulture)}" +
+                  (GeofenceRadiusMeters is { } r ? $"&radius={r.ToString(CultureInfo.InvariantCulture)}" : ""),
         }
         : null;
 
     public async Task OnAppearingAsync()
     {
         await RefreshAsync();
+        _ = LoadGeofenceRadiusAsync();
 
         refreshTimer ??= Application.Current!.Dispatcher.CreateTimer();
         refreshTimer.Interval = TimeSpan.FromSeconds(15);
         refreshTimer.Tick += async (_, _) => await RefreshAsync();
         refreshTimer.Start();
+    }
+
+    private async Task LoadGeofenceRadiusAsync()
+    {
+        try
+        {
+            var (result, error) = await apiClient.GetOrganisationSettingsAsync();
+            if (error != ApiClient.RevokedError && result is not null) GeofenceRadiusMeters = result.GeofenceRadiusMeters;
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
     }
 
     public void OnDisappearing() => refreshTimer?.Stop();

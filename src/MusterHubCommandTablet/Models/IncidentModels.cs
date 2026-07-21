@@ -33,3 +33,5 @@ public record RouteResponseDto(
     List<RoutePointDto>? Points, List<RouteInstructionDto>? Instructions);
 
 public record UpdateDeviceLocationRequest(double Latitude, double Longitude);
+
+public record OrganisationSettingsDto(double GeofenceRadiusMeters);

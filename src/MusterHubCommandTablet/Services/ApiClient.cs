@@ -57,6 +57,9 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<(IncidentDto? Result, string? Error)> StartNavigationAsync(Guid incidentId) =>
         PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/start-navigation");
 
+    public Task<(OrganisationSettingsDto? Result, string? Error)> GetOrganisationSettingsAsync() =>
+        GetAsync<OrganisationSettingsDto>("api/tablet/organisation-settings");
+
     private async Task<(T? Result, string? Error)> GetAsync<T>(string path)
     {
         try

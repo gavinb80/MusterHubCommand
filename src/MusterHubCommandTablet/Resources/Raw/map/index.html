@@ -40,6 +40,7 @@
     var params = new URLSearchParams(window.location.search);
     var lat = parseFloat(params.get("lat"));
     var lng = parseFloat(params.get("lng"));
+    var radius = parseFloat(params.get("radius"));
 
     var map = L.map("map", { attributionControl: true }).setView([lat, lng], 16);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -47,6 +48,20 @@
       maxZoom: 19,
     }).addTo(map);
     L.marker([lat, lng]).addTo(map);
+
+    // The org's own arrival-geofence radius, same colour convention as the
+    // web console's IncidentMap.tsx -- a subtle, dashed zone around the
+    // incident, not a bold shape competing with the route/appliance blue.
+    if (!isNaN(radius)) {
+      L.circle([lat, lng], {
+        radius: radius,
+        color: "#FF453A",
+        weight: 1,
+        fillColor: "#FF453A",
+        fillOpacity: 0.08,
+        dashArray: "4 4",
+      }).addTo(map);
+    }
 
     // A plain coloured dot, not another pin -- needs to read as "the
     // appliance," not "a second incident," at a glance. Matches the web

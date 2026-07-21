@@ -7,7 +7,7 @@ import { IncidentMap } from "../components/IncidentMap";
 import { LocationPicker } from "../components/LocationPicker";
 import type {
   AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, GeocodeResponseDto, IncidentDto, IncidentUpdateType,
-  RouteResponseDto, SetApplianceEntry,
+  OrganisationSettingsDto, RouteResponseDto, SetApplianceEntry,
 } from "../api/types";
 
 const APPLIANCE_STATUSES: ApplianceStatus[] = ["Mobilised", "EnRoute", "OnScene", "StoodDown"];
@@ -281,6 +281,14 @@ function LocationPanel({ incident, route, onRouteChange }: {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
+  // Same query key Setup > General uses -- shares its cache rather than
+  // re-fetching, and stays fresh if an Operator changes the radius there.
+  const settingsQuery = useQuery({
+    queryKey: ["organisation-settings"],
+    queryFn: () => apiFetch<OrganisationSettingsDto>("/organisation-settings"),
+  });
+  const geofenceRadiusMeters = settingsQuery.data?.geofenceRadiusMeters;
+
   const startEditing = () => {
     setDraftLat(incident.latitude);
     setDraftLng(incident.longitude);
@@ -368,6 +376,7 @@ function LocationPanel({ incident, route, onRouteChange }: {
         label={incident.address ?? incident.incidentType}
         appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
         routePoints={route.routePoints ?? undefined}
+        geofenceRadiusMeters={geofenceRadiusMeters}
       />
       <div className="flex items-center justify-between">
         <RoutingPanel incident={incident} onRouteChange={onRouteChange} />

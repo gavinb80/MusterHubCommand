@@ -44,6 +44,12 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
     [ObservableProperty]
     private IncidentDto? incident;
 
+    // Org-wide, essentially static -- fetched once alongside the incident,
+    // not on every ~12s poll.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MapSource))]
+    private double? geofenceRadiusMeters;
+
     // True only for the very first load (incident fetch, GPS fix, first
     // route computation) -- distinct from the base IsBusy flag PollOnceAsync
     // also sets on every subsequent ~12s poll, which must NOT re-show a
@@ -79,7 +85,8 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
     public UrlWebViewSource? MapSource => HasLocation
         ? new UrlWebViewSource
         {
-            Url = $"map/index.html?lat={Incident!.Latitude!.Value.ToString(CultureInfo.InvariantCulture)}&lng={Incident.Longitude!.Value.ToString(CultureInfo.InvariantCulture)}",
+            Url = $"map/index.html?lat={Incident!.Latitude!.Value.ToString(CultureInfo.InvariantCulture)}&lng={Incident.Longitude!.Value.ToString(CultureInfo.InvariantCulture)}" +
+                  (GeofenceRadiusMeters is { } r ? $"&radius={r.ToString(CultureInfo.InvariantCulture)}" : ""),
         }
         : null;
 
@@ -183,12 +190,20 @@ public partial class NavigateViewModel : BaseViewModel, IDisposable
 
         try
         {
-            var (result, error) = await apiClient.GetIncidentAsync(IncidentId);
+            var incidentTask = apiClient.GetIncidentAsync(IncidentId);
+            var settingsTask = apiClient.GetOrganisationSettingsAsync();
+            await Task.WhenAll(incidentTask, settingsTask);
+
+            var (result, error) = incidentTask.Result;
             if (error == ApiClient.RevokedError)
             {
                 await Shell.Current.GoToAsync("//pairing");
                 return;
             }
+
+            var (settings, settingsError) = settingsTask.Result;
+            if (settingsError != ApiClient.RevokedError && settings is not null) GeofenceRadiusMeters = settings.GeofenceRadiusMeters;
+
             if (result is not null)
             {
                 Incident = result;

@@ -1,4 +1,4 @@
-import { MapContainer, Marker, Polyline, TileLayer } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import markerIconUrl from "leaflet/dist/images/marker-icon.png";
 import markerIcon2xUrl from "leaflet/dist/images/marker-icon-2x.png";
@@ -32,13 +32,14 @@ export interface AppliancePosition {
 }
 
 export function IncidentMap({
-  latitude, longitude, label, appliances, routePoints,
+  latitude, longitude, label, appliances, routePoints, geofenceRadiusMeters,
 }: {
   latitude: number;
   longitude: number;
   label: string;
   appliances?: AppliancePosition[];
   routePoints?: [number, number][];
+  geofenceRadiusMeters?: number;
 }) {
   return (
     <MapContainer
@@ -51,6 +52,13 @@ export function IncidentMap({
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {geofenceRadiusMeters != null && (
+        <Circle
+          center={[latitude, longitude]}
+          radius={geofenceRadiusMeters}
+          pathOptions={{ color: "#FF453A", weight: 1, fillColor: "#FF453A", fillOpacity: 0.08, dashArray: "4 4" }}
+        />
+      )}
       <Marker position={[latitude, longitude]} icon={markerIcon} title={label} />
       {appliances?.map((a, i) => (
         <Marker key={i} position={[a.latitude, a.longitude]} icon={applianceIcon} title={a.label} />
