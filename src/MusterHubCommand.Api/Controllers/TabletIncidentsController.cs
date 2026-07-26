@@ -47,10 +47,14 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         // of this device being allowed to see the incident at all), so a
         // crew note always reads as "KV57P1", not a bare, unattributed
         // "Crew note" indistinguishable from any other appliance's.
-        var updated = await incidentService.AddUpdateAsync(
-            OrganisationId, id, IncidentUpdateSource.Crew,
-            DeviceCallsign, request.AuthorEmployeeId, request.Text, IncidentUpdateType.Note);
-        return Ok(updated!.ToDto());
+        try
+        {
+            var updated = await incidentService.AddUpdateAsync(
+                OrganisationId, id, IncidentUpdateSource.Crew,
+                DeviceCallsign, request.AuthorEmployeeId, request.Text, IncidentUpdateType.Note, request.ReplyToUpdateId);
+            return Ok(updated!.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
     [HttpPost("{id}/updates/{updateId}/acknowledge")]
@@ -61,6 +65,50 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
 
         var updated = await incidentService.AcknowledgeUpdateAsync(OrganisationId, id, updateId, DeviceCallsign!);
         return Ok((updated ?? incident).ToDto());
+    }
+
+    // Same shape as the notes endpoint above -- device callsign as the
+    // author, not a caller-supplied name.
+    [HttpPost("{id}/actions")]
+    public async Task<ActionResult<IncidentDto>> AddAction(Guid id, AddActionRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Text)) return BadRequest("Text is required.");
+
+        try
+        {
+            var updated = await incidentService.RaiseActionAsync(
+                OrganisationId, id, request.Kind, request.Text.Trim(), IncidentUpdateSource.Crew,
+                DeviceCallsign, null,
+                request.AssignedToEmployeeId, request.AssignedToName, request.SectorId);
+            return Ok(updated!.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPost("{id}/actions/{actionId}/acknowledge")]
+    public async Task<ActionResult<IncidentDto>> AcknowledgeAction(Guid id, Guid actionId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        var updated = await incidentService.AcknowledgeActionAsync(OrganisationId, id, actionId, DeviceCallsign!);
+        return Ok((updated ?? incident).ToDto());
+    }
+
+    [HttpPost("{id}/actions/{actionId}/resolve")]
+    public async Task<ActionResult<IncidentDto>> ResolveAction(Guid id, Guid actionId, ResolveActionRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        try
+        {
+            var updated = await incidentService.ResolveActionAsync(OrganisationId, id, actionId, request.Status, DeviceCallsign!);
+            return Ok((updated ?? incident).ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
     // From this device's own last-reported GPS to the incident, using

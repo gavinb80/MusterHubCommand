@@ -163,10 +163,14 @@ public class IncidentsController(
     {
         if (await RequireOperatorAsync() is ActionResult denied) return denied;
 
-        var updated = await incidentService.AddUpdateAsync(
-            OrganisationId, id, IncidentUpdateSource.ControlRoom,
-            request.AuthorName, null, request.Text, request.UpdateType);
-        return updated is null ? NotFound() : Ok(updated.ToDto());
+        try
+        {
+            var updated = await incidentService.AddUpdateAsync(
+                OrganisationId, id, IncidentUpdateSource.ControlRoom,
+                request.AuthorName, null, request.Text, request.UpdateType, request.ReplyToUpdateId);
+            return updated is null ? NotFound() : Ok(updated.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
     [HttpPost("{id}/updates/{updateId}/acknowledge")]
@@ -176,6 +180,45 @@ public class IncidentsController(
 
         var updated = await incidentService.AcknowledgeUpdateAsync(OrganisationId, id, updateId, request.AcknowledgedByName ?? "Control Room");
         return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPost("{id}/actions")]
+    public async Task<ActionResult<IncidentDto>> AddAction(Guid id, AddActionRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (string.IsNullOrWhiteSpace(request.Text)) return BadRequest("Text is required.");
+
+        try
+        {
+            var updated = await incidentService.RaiseActionAsync(
+                OrganisationId, id, request.Kind, request.Text.Trim(), IncidentUpdateSource.ControlRoom,
+                request.RaisedByName, null,
+                request.AssignedToEmployeeId, request.AssignedToName, request.SectorId);
+            return updated is null ? NotFound() : Ok(updated.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPost("{id}/actions/{actionId}/acknowledge")]
+    public async Task<ActionResult<IncidentDto>> AcknowledgeAction(Guid id, Guid actionId, AcknowledgeActionRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var updated = await incidentService.AcknowledgeActionAsync(OrganisationId, id, actionId, request.AcknowledgedByName ?? "Control Room");
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPost("{id}/actions/{actionId}/resolve")]
+    public async Task<ActionResult<IncidentDto>> ResolveAction(Guid id, Guid actionId, ResolveActionRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        try
+        {
+            var updated = await incidentService.ResolveActionAsync(OrganisationId, id, actionId, request.Status, request.ResolvedByName ?? "Control Room");
+            return updated is null ? NotFound() : Ok(updated.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
     // Same route computation as the tablet's own GET .../route, but for a

@@ -15,7 +15,8 @@ namespace MusterHubCommandTablet.ViewModels;
 // into one bindable, chronological list (see BuildTimeline below).
 public record TimelineEntry(
     string Id, string Kind, string Text, string Caption, DateTimeOffset Timestamp,
-    bool Acknowledgeable, DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName);
+    bool Acknowledgeable, DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName,
+    bool CanReply, string? ReplyToText);
 
 // Read-only on the tablet -- crews see which sector each appliance is in,
 // but creating sectors and assigning appliances to them stays a
@@ -94,6 +95,61 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
         return groups;
     }
+
+    // Recomputed wholesale on every poll, same as ApplianceGroups -- no
+    // independent scroll state to lose the way Timeline has.
+    public List<IncidentActionDto> Actions => Incident?.Actions ?? [];
+
+    // Overview/Attendance, Tasks & Requests, and Timeline used to all be
+    // visible cards stacked in a fixed-height column -- once there were
+    // three of them the page genuinely didn't fit and Timeline got
+    // squeezed to a sliver. One tab visible at a time, each getting the
+    // full remaining height, is the actual fix for that, not another
+    // ScrollView patch.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOverviewSelected))]
+    [NotifyPropertyChangedFor(nameof(IsTasksSelected))]
+    [NotifyPropertyChangedFor(nameof(IsTimelineSelected))]
+    private string selectedTab = "Overview";
+
+    public bool IsOverviewSelected => SelectedTab == "Overview";
+    public bool IsTasksSelected => SelectedTab == "Tasks";
+    public bool IsTimelineSelected => SelectedTab == "Timeline";
+
+    [RelayCommand]
+    private void SelectTab(string tab) => SelectedTab = tab;
+
+    // Counts of "would you want to know this without switching tabs" --
+    // not a generic item count. Recomputed wholesale alongside Actions/
+    // Timeline in RefreshAsync.
+    public int OpenActionsCount => Actions.Count(a => a.Status == "Open");
+    public int UnacknowledgedUpdateCount => Timeline.Count(e => e.Acknowledgeable && e.AcknowledgedAtUtc is null);
+
+    [ObservableProperty]
+    private string actionKind = "Task";
+
+    [ObservableProperty]
+    private string actionText = string.Empty;
+
+    [ObservableProperty]
+    private bool isRaisingAction;
+
+    [ObservableProperty]
+    private bool isAddingAction;
+
+    // Which Timeline entry, if any, the shared note box's next Post
+    // targets as a reply -- null means Post sends a plain new note.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReplying))]
+    [NotifyPropertyChangedFor(nameof(ReplyingToText))]
+    private string? replyingToId;
+
+    public bool IsReplying => ReplyingToId is not null;
+
+    // What the reply banner quotes -- looked up from the current
+    // Timeline rather than stored separately, so it can never drift from
+    // what SyncTimeline actually has.
+    public string? ReplyingToText => Timeline.FirstOrDefault(e => e.Id == ReplyingToId)?.Text;
 
     // Reflects only whether the last poll actually succeeded -- not a
     // real-time connection state (this app polls, it doesn't hold a live
@@ -175,10 +231,15 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     // package for.
     private static List<TimelineEntry> BuildTimeline(IncidentDto incident)
     {
+        // Text lookup by update id, so a reply can quote what it's
+        // replying to -- same "replies stay in the flat list with a
+        // quoted preview" approach the web console uses.
+        var textById = incident.Updates.ToDictionary(u => u.Id, u => u.Text);
+
         var entries = new List<TimelineEntry>
         {
             new("created", "Created", $"Incident created: {incident.IncidentType}", incident.OrgUnitName, incident.StartedAtUtc,
-                Acknowledgeable: false, AcknowledgedAtUtc: null, AcknowledgedByName: null),
+                Acknowledgeable: false, AcknowledgedAtUtc: null, AcknowledgedByName: null, CanReply: false, ReplyToText: null),
         };
         entries.AddRange(incident.Updates.Select(u => new TimelineEntry(
             u.Id.ToString(), u.UpdateType,
@@ -194,10 +255,12 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             u.CreatedAtUtc,
             Acknowledgeable: u.UpdateType is "General" or "Hazard",
             u.AcknowledgedAtUtc,
-            u.AcknowledgedByName)));
+            u.AcknowledgedByName,
+            CanReply: true,
+            ReplyToText: u.ReplyToUpdateId is { } replyId ? textById.GetValueOrDefault(replyId, "a since-removed message") : null)));
         if (incident.ClosedAtUtc is { } closedAt)
             entries.Add(new("closed", "Closed", "Incident closed", incident.Status, closedAt,
-                Acknowledgeable: false, AcknowledgedAtUtc: null, AcknowledgedByName: null));
+                Acknowledgeable: false, AcknowledgedAtUtc: null, AcknowledgedByName: null, CanReply: false, ReplyToText: null));
 
         return entries.OrderBy(e => e.Timestamp).ToList();
     }
@@ -223,6 +286,7 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             if (index < 0) Timeline.Add(entry);
             else if (Timeline[index].AcknowledgedAtUtc != entry.AcknowledgedAtUtc) Timeline[index] = entry;
         }
+        OnPropertyChanged(nameof(UnacknowledgedUpdateCount));
     }
 
     [RelayCommand]
@@ -308,6 +372,8 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             OnPropertyChanged(nameof(IncidentNumberLabel));
             OnPropertyChanged(nameof(StartedLabel));
             OnPropertyChanged(nameof(ApplianceGroups));
+            OnPropertyChanged(nameof(Actions));
+            OnPropertyChanged(nameof(OpenActionsCount));
             SyncTimeline(BuildTimeline(result));
             OnPropertyChanged(nameof(HasLocation));
             OnPropertyChanged(nameof(ShowMap));
@@ -335,6 +401,12 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
         }
     }
 
+    // Same input box serves both "add a note" and "reply to X" -- when
+    // ReplyingToId is set (via StartReplyCommand on a specific Timeline
+    // entry), Post sends this same text as a reply instead of a fresh
+    // note, then clears the reply state. One box, one Post button, no
+    // per-row inline forms needing a value comparison MAUI's simple
+    // DataTrigger binding can't express.
     [RelayCommand]
     private async Task AddNoteAsync()
     {
@@ -343,7 +415,8 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
         IsPostingNote = true;
         try
         {
-            var (result, error) = await apiClient.AddNoteAsync(IncidentId, NoteText.Trim());
+            Guid? replyToId = ReplyingToId is { } replying && Guid.TryParse(replying, out var parsed) ? parsed : null;
+            var (result, error) = await apiClient.AddNoteAsync(IncidentId, NoteText.Trim(), replyToId);
 
             if (error == ApiClient.RevokedError)
             {
@@ -365,6 +438,7 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             // which reads as "did that actually work?" for up to 15s.
             SyncTimeline(BuildTimeline(result));
             NoteText = string.Empty;
+            ReplyingToId = null;
         }
         catch (Exception ex)
         {
@@ -392,6 +466,117 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             if (result is not null)
             {
                 Incident = result;
+                SyncTimeline(BuildTimeline(result));
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    // Sets which entry the shared note box's next Post will target -- see
+    // AddNoteAsync's own comment for why there's one input box, not a
+    // per-row inline form.
+    [RelayCommand]
+    private void StartReply(string updateId) => ReplyingToId = updateId;
+
+    [RelayCommand]
+    private void CancelReply() => ReplyingToId = null;
+
+    [RelayCommand]
+    private void ToggleAddingAction() => IsAddingAction = !IsAddingAction;
+
+    [RelayCommand]
+    private void SetActionKind(string kind) => ActionKind = kind;
+
+    [RelayCommand]
+    private async Task RaiseActionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ActionText) || IsRaisingAction) return;
+
+        IsRaisingAction = true;
+        try
+        {
+            var request = new AddActionRequest(ActionKind, ActionText.Trim());
+            var (result, error) = await apiClient.AddActionAsync(IncidentId, request);
+
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is null)
+            {
+                ErrorMessage = error ?? "Couldn't raise that. Try again.";
+                return;
+            }
+
+            ErrorMessage = string.Empty;
+            Incident = result;
+            OnPropertyChanged(nameof(Actions));
+            OnPropertyChanged(nameof(OpenActionsCount));
+            SyncTimeline(BuildTimeline(result));
+            ActionText = string.Empty;
+            IsAddingAction = false;
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+            ErrorMessage = "Something went wrong raising that.";
+        }
+        finally
+        {
+            IsRaisingAction = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task AcknowledgeActionAsync(Guid actionId)
+    {
+        try
+        {
+            var (result, error) = await apiClient.AcknowledgeActionAsync(IncidentId, actionId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                OnPropertyChanged(nameof(Actions));
+                OnPropertyChanged(nameof(OpenActionsCount));
+                SyncTimeline(BuildTimeline(result));
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    [RelayCommand]
+    private async Task CompleteActionAsync(Guid actionId) => await ResolveActionAsync(actionId, "Completed");
+
+    [RelayCommand]
+    private async Task DeclineActionAsync(Guid actionId) => await ResolveActionAsync(actionId, "Declined");
+
+    private async Task ResolveActionAsync(Guid actionId, string status)
+    {
+        try
+        {
+            var (result, error) = await apiClient.ResolveActionAsync(IncidentId, actionId, status);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                OnPropertyChanged(nameof(Actions));
+                OnPropertyChanged(nameof(OpenActionsCount));
                 SyncTimeline(BuildTimeline(result));
             }
         }

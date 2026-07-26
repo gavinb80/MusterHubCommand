@@ -15,6 +15,7 @@
             <converters:TimelineKindToColorConverter x:Key="TimelineKindToColorConverter" />
             <converters:OnlineToColorConverter x:Key="OnlineToColorConverter" />
             <converters:ResourceKindLabelConverter x:Key="ResourceKindLabelConverter" />
+            <converters:IncidentActionKindLabelConverter x:Key="IncidentActionKindLabelConverter" />
             <converters:ObjectNotNullToBoolConverter x:Key="ObjectNotNullToBoolConverter" />
             <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter" />
             <converters:ExpandGlyphConverter x:Key="ExpandGlyphConverter" />

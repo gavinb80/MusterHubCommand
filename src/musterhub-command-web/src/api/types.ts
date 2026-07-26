@@ -30,7 +30,9 @@ export type IncidentStatus = "Open" | "Closed" | "Cancelled";
 export type ApplianceStatus = "Mobilised" | "EnRoute" | "OnScene" | "StoodDown";
 export type ResourceKind = "Appliance" | "OfficerVehicle" | "Specialist";
 export type IncidentUpdateSource = "ControlRoom" | "Crew";
-export type IncidentUpdateType = "General" | "Hazard" | "ResourceChange" | "Note";
+export type IncidentUpdateType = "General" | "Hazard" | "ResourceChange" | "Note" | "ActionChange";
+export type IncidentActionKind = "Task" | "ResourceRequest";
+export type IncidentActionStatus = "Open" | "Acknowledged" | "Completed" | "Declined";
 
 export interface IncidentApplianceDto {
   id: string;
@@ -69,6 +71,27 @@ export interface IncidentUpdateDto {
   updateType: IncidentUpdateType;
   acknowledgedAtUtc: string | null;
   acknowledgedByName: string | null;
+  replyToUpdateId: string | null;
+  createdAtUtc: string;
+}
+
+// assignedToName/raisedByName are always the display name -- resolved
+// server-side the same way IncidentSectorDto.personInChargeName is.
+export interface IncidentActionDto {
+  id: string;
+  kind: IncidentActionKind;
+  text: string;
+  status: IncidentActionStatus;
+  source: IncidentUpdateSource;
+  raisedByName: string | null;
+  raisedByEmployeeId: string | null;
+  assignedToEmployeeId: string | null;
+  assignedToName: string | null;
+  sectorId: string | null;
+  acknowledgedAtUtc: string | null;
+  acknowledgedByName: string | null;
+  resolvedAtUtc: string | null;
+  resolvedByName: string | null;
   createdAtUtc: string;
 }
 
@@ -89,6 +112,7 @@ export interface IncidentDto {
   appliances: IncidentApplianceDto[];
   updates: IncidentUpdateDto[];
   sectors: IncidentSectorDto[];
+  actions: IncidentActionDto[];
 }
 
 export interface IncidentSummaryDto {
@@ -133,10 +157,30 @@ export interface AddIncidentUpdateRequest {
   authorName?: string | null;
   text: string;
   updateType?: IncidentUpdateType;
+  replyToUpdateId?: string | null;
 }
 
 export interface AcknowledgeUpdateRequest {
   acknowledgedByName?: string | null;
+}
+
+// Kind isn't direction-locked -- see the API's own AddActionRequest comment.
+export interface AddActionRequest {
+  kind: IncidentActionKind;
+  text: string;
+  raisedByName?: string | null;
+  assignedToEmployeeId?: string | null;
+  assignedToName?: string | null;
+  sectorId?: string | null;
+}
+
+export interface AcknowledgeActionRequest {
+  acknowledgedByName?: string | null;
+}
+
+export interface ResolveActionRequest {
+  status: IncidentActionStatus;
+  resolvedByName?: string | null;
 }
 
 export interface AddSectorRequest {

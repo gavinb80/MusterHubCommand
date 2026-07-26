@@ -6,8 +6,10 @@ import { useToast } from "../components/ToastProvider";
 import { IncidentMap } from "../components/IncidentMap";
 import { LocationPicker } from "../components/LocationPicker";
 import { ApplianceOfficerControl } from "../components/ApplianceOfficerControl";
+import { PersonPicker } from "../components/PersonPicker";
 import type {
-  AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, EmployeeDto, GeocodeResponseDto, IncidentDto, IncidentUpdateType,
+  AddActionRequest, AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, EmployeeDto, GeocodeResponseDto,
+  IncidentActionKind, IncidentActionStatus, IncidentDto, IncidentUpdateType,
   MeResponse, OrganisationSettingsDto, ResourceKind, RouteResponseDto, SetApplianceEntry,
 } from "../api/types";
 
@@ -262,17 +264,22 @@ function AttendancePanel({ incident }: { incident: IncidentDto }) {
 // both means the render loop below doesn't need two different code paths.
 type TimelineEntry = {
   id: string;
-  kind: "created" | "resourceChange" | "hazard" | "note" | "general" | "closed";
+  kind: "created" | "resourceChange" | "actionChange" | "hazard" | "note" | "general" | "closed";
   text: string;
   caption: string;
   timestamp: string;
   // Only General/Hazard updates are ever acknowledgeable -- a
-  // ResourceChange line is a status log entry, not something anyone needs
-  // to confirm they've seen, and "created"/"closed" are synthesized
-  // client-side (no backend row to acknowledge in the first place).
+  // ResourceChange/ActionChange line is a status log entry, not something
+  // anyone needs to confirm they've seen, and "created"/"closed" are
+  // synthesized client-side (no backend row to acknowledge in the first
+  // place).
   acknowledgeable: boolean;
   acknowledgedAtUtc: string | null;
   acknowledgedByName: string | null;
+  // Set only for real IncidentUpdate rows -- lets the Reply control target
+  // a specific message, and lets a reply show what it's replying to.
+  updateId: string | null;
+  replyToUpdateId: string | null;
 };
 
 // "created" deliberately isn't brand-secondary (#0B1F3A) -- that's a
@@ -285,6 +292,7 @@ type TimelineEntry = {
 const TIMELINE_DOT_STYLES: Record<TimelineEntry["kind"], string> = {
   created: "bg-(--content-secondary)",
   resourceChange: "bg-status-mobilised",
+  actionChange: "bg-brand-primary",
   hazard: "bg-status-hazard",
   note: "bg-(--content-secondary)",
   general: "bg-(--content-secondary)",
@@ -294,6 +302,7 @@ const TIMELINE_DOT_STYLES: Record<TimelineEntry["kind"], string> = {
 function updateKind(updateType: IncidentUpdateType): TimelineEntry["kind"] {
   if (updateType === "Hazard") return "hazard";
   if (updateType === "ResourceChange") return "resourceChange";
+  if (updateType === "ActionChange") return "actionChange";
   if (updateType === "Note") return "note";
   return "general";
 }
@@ -303,6 +312,7 @@ function buildTimeline(incident: IncidentDto): TimelineEntry[] {
     {
       id: "created", kind: "created", text: `Incident created: ${incident.incidentType}`, caption: incident.orgUnitName,
       timestamp: incident.startedAtUtc, acknowledgeable: false, acknowledgedAtUtc: null, acknowledgedByName: null,
+      updateId: null, replyToUpdateId: null,
     },
     ...incident.updates.map((u): TimelineEntry => ({
       id: u.id,
@@ -319,12 +329,15 @@ function buildTimeline(incident: IncidentDto): TimelineEntry[] {
       acknowledgeable: u.updateType === "General" || u.updateType === "Hazard",
       acknowledgedAtUtc: u.acknowledgedAtUtc,
       acknowledgedByName: u.acknowledgedByName,
+      updateId: u.id,
+      replyToUpdateId: u.replyToUpdateId,
     })),
   ];
   if (incident.closedAtUtc) {
     entries.push({
       id: "closed", kind: "closed", text: "Incident closed", caption: incident.status, timestamp: incident.closedAtUtc,
       acknowledgeable: false, acknowledgedAtUtc: null, acknowledgedByName: null,
+      updateId: null, replyToUpdateId: null,
     });
   }
   // Oldest first, top to bottom -- reads as the incident's own story in
@@ -336,6 +349,8 @@ function buildTimeline(incident: IncidentDto): TimelineEntry[] {
 function TimelinePanel({ incident }: { incident: IncidentDto }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
 
   // Same cache key RootLayout's account block already queries -- shares
   // that result rather than firing a second /me request just to attribute
@@ -352,6 +367,17 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
     onError: (error) => showToast(error.message, "error"),
   });
 
+  const replyMutation = useMutation({
+    mutationFn: (request: AddIncidentUpdateRequest) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/updates`, { method: "POST", body: JSON.stringify(request) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
+      setReplyingToId(null);
+      setReplyText("");
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
   const acknowledgeMutation = useMutation({
     mutationFn: (updateId: string) =>
       apiFetch<IncidentDto>(`/incidents/${incident.id}/updates/${updateId}/acknowledge`, {
@@ -363,6 +389,10 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
   });
 
   const timeline = buildTimeline(incident);
+  // Replies stay in the same flat chronological list rather than a
+  // separate thread view -- this just resolves what a reply's own quoted
+  // preview should say.
+  const entryById = new Map(timeline.map((entry) => [entry.updateId, entry]));
 
   return (
     <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
@@ -414,6 +444,11 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
                 <span className={entry.kind === "hazard" ? "font-semibold text-status-hazard" : undefined}>{entry.caption}</span>
                 <span>{new Date(entry.timestamp).toLocaleString()}</span>
               </div>
+              {entry.replyToUpdateId && (
+                <p className="mt-0.5 truncate text-caption text-(--content-secondary)">
+                  &#8618; replying to: {entryById.get(entry.replyToUpdateId)?.text ?? "a since-removed message"}
+                </p>
+              )}
               <p className="mt-0.5 text-body text-(--content-primary)">{entry.text}</p>
               {entry.acknowledgeable && (
                 entry.acknowledgedAtUtc ? (
@@ -431,10 +466,248 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
                   </button>
                 )
               )}
+              {entry.updateId && (
+                replyingToId === entry.updateId ? (
+                  <form
+                    className="mt-2 flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!replyText.trim()) return;
+                      replyMutation.mutate({ text: replyText.trim(), replyToUpdateId: entry.updateId });
+                    }}
+                  >
+                    <input
+                      value={replyText}
+                      onChange={(ev) => setReplyText(ev.target.value)}
+                      placeholder="Reply..."
+                      autoFocus
+                      className="flex-1 rounded-lg border border-(--surface-border) px-2 py-1 text-caption"
+                    />
+                    <button
+                      type="submit"
+                      disabled={replyMutation.isPending}
+                      className="text-caption font-semibold text-brand-primary disabled:opacity-60"
+                    >
+                      Send
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setReplyingToId(null); setReplyText(""); }}
+                      className="text-caption text-(--content-secondary)"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setReplyingToId(entry.updateId); setReplyText(""); }}
+                    className="mt-1 text-caption text-(--content-secondary)"
+                  >
+                    Reply
+                  </button>
+                )
+              )}
             </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+const ACTION_KIND_LABELS: Record<IncidentActionKind, string> = {
+  Task: "Task",
+  ResourceRequest: "Resource Request",
+};
+
+const ACTION_STATUS_STYLES: Record<IncidentActionStatus, string> = {
+  Open: "bg-status-mobilised/15 text-status-mobilised",
+  Acknowledged: "bg-status-en-route/15 text-status-en-route",
+  Completed: "bg-status-on-scene/15 text-status-on-scene",
+  Declined: "bg-status-hazard/15 text-status-hazard",
+};
+
+// One entity for both -- a task and a resource request are the same
+// shape (a directed ask with a status lifecycle and an assignee), see
+// IncidentAction's own comment on the API side. Every status change also
+// lands in the Timeline via QueueActionChangeUpdate, so this card and the
+// Timeline never drift apart on "what actually happened."
+function ActionsPanel({ incident }: { incident: IncidentDto }) {
+  const [adding, setAdding] = useState(false);
+  const [kind, setKind] = useState<IncidentActionKind>("Task");
+  const [text, setText] = useState("");
+  const [assignedToEmployeeId, setAssignedToEmployeeId] = useState<string | null>(null);
+  const [assignedToName, setAssignedToName] = useState<string | null>(null);
+  const [sectorId, setSectorId] = useState("");
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
+  const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => apiFetch<EmployeeDto[]>("/employees") });
+  const employees = employeesQuery.data ?? [];
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
+
+  const resetForm = () => {
+    setKind("Task");
+    setText("");
+    setAssignedToEmployeeId(null);
+    setAssignedToName(null);
+    setSectorId("");
+    setAdding(false);
+  };
+
+  const addMutation = useMutation({
+    mutationFn: (request: AddActionRequest) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/actions`, { method: "POST", body: JSON.stringify(request) }),
+    onSuccess: () => { invalidate(); resetForm(); },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const acknowledgeMutation = useMutation({
+    mutationFn: (actionId: string) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/actions/${actionId}/acknowledge`, {
+        method: "POST",
+        body: JSON.stringify({ acknowledgedByName: meQuery.data?.displayName ?? null }),
+      }),
+    onSuccess: () => invalidate(),
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ actionId, status }: { actionId: string; status: IncidentActionStatus }) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/actions/${actionId}/resolve`, {
+        method: "POST",
+        body: JSON.stringify({ status, resolvedByName: meQuery.data?.displayName ?? null }),
+      }),
+    onSuccess: () => invalidate(),
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  return (
+    <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
+      <div className="flex items-center justify-between">
+        <h2 className="text-card-title font-semibold text-(--content-primary)">Tasks &amp; Requests</h2>
+        {!adding && (
+          <button type="button" onClick={() => setAdding(true)} className="text-body text-brand-primary">
+            + Add
+          </button>
+        )}
+      </div>
+
+      {incident.actions.length === 0 && !adding && (
+        <p className="mt-3 text-body text-(--content-secondary)">Nothing raised yet.</p>
+      )}
+
+      <div className="mt-3 flex flex-col gap-3">
+        {incident.actions.map((a) => (
+          <div key={a.id} className="rounded-lg border border-(--surface-border) p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <span className="text-caption font-semibold uppercase tracking-wide text-(--content-secondary)">
+                  {ACTION_KIND_LABELS[a.kind]}
+                </span>
+                <p className="text-body text-(--content-primary)">{a.text}</p>
+                {a.assignedToName && (
+                  <p className="text-caption text-(--content-secondary)">Assigned to {a.assignedToName}</p>
+                )}
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-caption font-semibold ${ACTION_STATUS_STYLES[a.status]}`}>
+                {a.status}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-3 text-caption">
+              {a.status === "Open" && (
+                <button
+                  type="button"
+                  disabled={acknowledgeMutation.isPending}
+                  onClick={() => acknowledgeMutation.mutate(a.id)}
+                  className="font-semibold text-brand-primary disabled:opacity-60"
+                >
+                  Acknowledge
+                </button>
+              )}
+              {(a.status === "Open" || a.status === "Acknowledged") && (
+                <>
+                  <button
+                    type="button"
+                    disabled={resolveMutation.isPending}
+                    onClick={() => resolveMutation.mutate({ actionId: a.id, status: "Completed" })}
+                    className="font-semibold text-status-on-scene disabled:opacity-60"
+                  >
+                    Complete
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resolveMutation.isPending}
+                    onClick={() => resolveMutation.mutate({ actionId: a.id, status: "Declined" })}
+                    className="text-(--content-secondary) disabled:opacity-60"
+                  >
+                    Decline
+                  </button>
+                </>
+              )}
+              {a.resolvedByName && a.resolvedAtUtc && (
+                <span className="text-(--content-secondary)">
+                  {a.status} by {a.resolvedByName} at {new Date(a.resolvedAtUtc).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {adding && (
+        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-(--surface-border) p-3">
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as IncidentActionKind)}
+            className="rounded-lg border border-(--surface-border) px-2 py-1 text-body"
+          >
+            {(Object.keys(ACTION_KIND_LABELS) as IncidentActionKind[]).map((k) => (
+              <option key={k} value={k}>{ACTION_KIND_LABELS[k]}</option>
+            ))}
+          </select>
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={kind === "Task" ? "Task description" : "What's needed?"}
+            className="rounded-lg border border-(--surface-border) px-2 py-1 text-body"
+            autoFocus
+          />
+          <PersonPicker
+            employees={employees}
+            employeeId={assignedToEmployeeId}
+            name={assignedToName}
+            placeholder="Assign to..."
+            onChange={(empId, name) => { setAssignedToEmployeeId(empId); setAssignedToName(name); }}
+          />
+          <select
+            value={sectorId}
+            onChange={(e) => setSectorId(e.target.value)}
+            className="rounded-lg border border-(--surface-border) px-2 py-1 text-body"
+          >
+            <option value="">No specific sector</option>
+            {incident.sectors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={resetForm} className="rounded-lg px-3 py-1.5 text-body text-(--content-secondary)">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!text.trim() || addMutation.isPending}
+              onClick={() => addMutation.mutate({
+                kind, text: text.trim(), raisedByName: meQuery.data?.displayName ?? null,
+                assignedToEmployeeId, assignedToName, sectorId: sectorId || null,
+              })}
+              className="rounded-lg bg-brand-primary px-3 py-1.5 text-body font-semibold text-white disabled:opacity-60"
+            >
+              Raise
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -645,11 +918,48 @@ function LocationPanel({ incident, route, onRouteChange }: {
   );
 }
 
+type DetailTab = "overview" | "tasks" | "timeline";
+
+// Plain buttons, not a component library -- this is the same idea as
+// every other bit of UI in this file, just toggling which panel below
+// renders instead of toggling a form's visibility. The badge is a count
+// of "would you want to know this without clicking in," not a generic
+// item count -- see its callers for what that means per tab.
+function TabButton({ label, active, badge, badgeUrgent, onClick }: {
+  label: string;
+  active: boolean;
+  badge?: number;
+  badgeUrgent?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-2 border-b-2 px-1 pb-2 text-body font-semibold ${
+        active ? "border-brand-primary text-brand-primary" : "border-transparent text-(--content-secondary)"
+      }`}
+    >
+      {label}
+      {!!badge && (
+        <span
+          className={`rounded-full px-2 py-0.5 text-caption font-semibold text-white ${
+            badgeUrgent ? "bg-status-hazard" : "bg-(--content-secondary)"
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
 
   const incidentQuery = useQuery({
     queryKey: ["incident", id],
@@ -732,10 +1042,34 @@ export function IncidentDetailPage() {
 
       <LocationPanel incident={incident} route={route} onRouteChange={setRoute} />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <AttendancePanel incident={incident} />
-        <TimelinePanel incident={incident} />
-      </div>
+      {(() => {
+        const openActionsCount = incident.actions.filter((a) => a.status === "Open").length;
+        const unacknowledged = incident.updates.filter(
+          (u) => (u.updateType === "General" || u.updateType === "Hazard") && !u.acknowledgedAtUtc,
+        );
+        return (
+          <div className="flex gap-6 border-b border-(--surface-border)">
+            <TabButton label="Overview" active={activeTab === "overview"} onClick={() => setActiveTab("overview")} />
+            <TabButton
+              label="Tasks & Requests"
+              active={activeTab === "tasks"}
+              badge={openActionsCount}
+              onClick={() => setActiveTab("tasks")}
+            />
+            <TabButton
+              label="Timeline"
+              active={activeTab === "timeline"}
+              badge={unacknowledged.length}
+              badgeUrgent={unacknowledged.some((u) => u.updateType === "Hazard")}
+              onClick={() => setActiveTab("timeline")}
+            />
+          </div>
+        );
+      })()}
+
+      {activeTab === "overview" && <AttendancePanel incident={incident} />}
+      {activeTab === "tasks" && <ActionsPanel incident={incident} />}
+      {activeTab === "timeline" && <TimelinePanel incident={incident} />}
     </div>
   );
 }

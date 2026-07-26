@@ -23,14 +23,25 @@ public record IncidentSectorDto(
 public record IncidentUpdateDto(
     Guid Id, IncidentUpdateSource Source, string? AuthorName, Guid? AuthorEmployeeId,
     string Text, IncidentUpdateType UpdateType,
-    DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName, DateTimeOffset CreatedAtUtc);
+    DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName,
+    Guid? ReplyToUpdateId, DateTimeOffset CreatedAtUtc);
+
+// AssignedToName/RaisedByName are always the display name -- resolved
+// server-side the same way IncidentSectorDto.personInChargeName is.
+public record IncidentActionDto(
+    Guid Id, IncidentActionKind Kind, string Text, IncidentActionStatus Status,
+    IncidentUpdateSource Source, string? RaisedByName, Guid? RaisedByEmployeeId,
+    Guid? AssignedToEmployeeId, string? AssignedToName, Guid? SectorId,
+    DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName,
+    DateTimeOffset? ResolvedAtUtc, string? ResolvedByName, DateTimeOffset CreatedAtUtc);
 
 public record IncidentDto(
     Guid Id, string ExternalReference, string IncidentType, string? Description,
     string? Address, double? Latitude, double? Longitude,
     Guid OrgUnitId, string OrgUnitName, IncidentStatus Status,
     DateTimeOffset StartedAtUtc, DateTimeOffset? ClosedAtUtc, DateTimeOffset UpdatedAtUtc,
-    List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates, List<IncidentSectorDto> Sectors);
+    List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates,
+    List<IncidentSectorDto> Sectors, List<IncidentActionDto> Actions);
 
 // The list view -- no appliances/updates payload, kept light for a
 // station's "what's active" screen (tablet home and control room's list).
@@ -80,9 +91,11 @@ public record SetApplianceOfficerRequest(Guid? OfficerInChargeEmployeeId, string
 // Source is never a caller-supplied field: the integration API and the
 // control room console both always write ControlRoom; only
 // TabletIncidentsController's own note endpoint ever writes Crew.
-public record AddIncidentUpdateRequest(string? AuthorName, string Text, IncidentUpdateType UpdateType = IncidentUpdateType.General);
+public record AddIncidentUpdateRequest(
+    string? AuthorName, string Text, IncidentUpdateType UpdateType = IncidentUpdateType.General,
+    Guid? ReplyToUpdateId = null);
 
-public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId);
+public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId, Guid? ReplyToUpdateId = null);
 
 // Same trust model as AddIncidentUpdateRequest.AuthorName -- the control
 // room console already knows its own operator's display name from their
@@ -90,6 +103,19 @@ public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId);
 // server-resolved identity is needed here that the caller doesn't already
 // have.
 public record AcknowledgeUpdateRequest(string? AcknowledgedByName);
+
+// Kind isn't direction-locked -- both the control room and tablet can
+// raise either kind, see IncidentAction's own comment. RaisedByName is
+// caller-supplied, same trust model as AddIncidentUpdateRequest.AuthorName
+// -- the control room console already knows its own operator's name.
+public record AddActionRequest(
+    IncidentActionKind Kind, string Text, string? RaisedByName = null,
+    Guid? AssignedToEmployeeId = null, string? AssignedToName = null, Guid? SectorId = null);
+
+public record AcknowledgeActionRequest(string? AcknowledgedByName);
+
+// Status must be Completed or Declined -- the terminal states.
+public record ResolveActionRequest(IncidentActionStatus Status, string? ResolvedByName = null);
 
 public static class IncidentMapping
 {
@@ -105,12 +131,21 @@ public static class IncidentMapping
                 a.OfficerInChargeEmployeeId is not null ? a.OfficerInChargeEmployee?.DisplayName : a.OfficerInChargeName,
                 null, null, null, a.UpdatedAtUtc)).ToList(),
         incident.Updates.OrderBy(u => u.CreatedAtUtc)
-            .Select(u => new IncidentUpdateDto(u.Id, u.Source, u.AuthorName, u.AuthorEmployeeId, u.Text, u.UpdateType, u.AcknowledgedAtUtc, u.AcknowledgedByName, u.CreatedAtUtc)).ToList(),
+            .Select(u => new IncidentUpdateDto(
+                u.Id, u.Source, u.AuthorName, u.AuthorEmployeeId, u.Text, u.UpdateType,
+                u.AcknowledgedAtUtc, u.AcknowledgedByName, u.ReplyToUpdateId, u.CreatedAtUtc)).ToList(),
         incident.Sectors.OrderBy(s => s.SortOrder)
             .Select(s => new IncidentSectorDto(
                 s.Id, s.Name, s.SortOrder, s.ParentId,
                 s.PersonInChargeEmployeeId,
                 s.PersonInChargeEmployeeId is not null ? s.PersonInChargeEmployee?.DisplayName : s.PersonInChargeName))
+            .ToList(),
+        incident.Actions.OrderBy(a => a.CreatedAtUtc)
+            .Select(a => new IncidentActionDto(
+                a.Id, a.Kind, a.Text, a.Status, a.Source, a.RaisedByName, a.RaisedByEmployeeId,
+                a.AssignedToEmployeeId,
+                a.AssignedToEmployeeId is not null ? a.AssignedToEmployee?.DisplayName : a.AssignedToName,
+                a.SectorId, a.AcknowledgedAtUtc, a.AcknowledgedByName, a.ResolvedAtUtc, a.ResolvedByName, a.CreatedAtUtc))
             .ToList());
 
     public static IncidentSummaryDto ToSummaryDto(this Incident incident) => new(

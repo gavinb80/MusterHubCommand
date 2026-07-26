@@ -37,6 +37,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             .Include(i => i.Updates)
             .Include(i => i.OrgUnit)
             .Include(i => i.Sectors).ThenInclude(s => s.PersonInChargeEmployee)
+            .Include(i => i.Actions).ThenInclude(a => a.AssignedToEmployee)
             .Where(i => i.OrganisationId == organisationId);
 
     public async Task<Incident> CreateOrUpsertAsync(Guid organisationId, CreateIncidentRequest request, CancellationToken ct = default)
@@ -455,14 +456,121 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         });
     }
 
-    // Append-only -- nothing here ever edits or removes a prior update.
-    public async Task<Incident?> AddUpdateAsync(
-        Guid organisationId, Guid incidentId, IncidentUpdateSource source,
-        string? authorName, Guid? authorEmployeeId, string text, IncidentUpdateType updateType,
+    // Same shape as QueueResourceChangeUpdate -- an IncidentAction status
+    // change becomes a real Timeline entry, so the Timeline stays the one
+    // "what happened" feed instead of a second, disconnected log.
+    private void QueueActionChangeUpdate(Incident incident, IncidentUpdateSource source, string text)
+    {
+        db.IncidentUpdates.Add(new IncidentUpdate
+        {
+            IncidentId = incident.Id,
+            Source = source,
+            Text = text,
+            UpdateType = IncidentUpdateType.ActionChange,
+        });
+    }
+
+    public async Task<Incident?> RaiseActionAsync(
+        Guid organisationId, Guid incidentId, IncidentActionKind kind, string text, IncidentUpdateSource source,
+        string? raisedByName, Guid? raisedByEmployeeId,
+        Guid? assignedToEmployeeId, string? assignedToName, Guid? sectorId,
         CancellationToken ct = default)
     {
         var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
         if (incident is null) return null;
+
+        if (sectorId is not null && incident.Sectors.All(s => s.Id != sectorId))
+            throw new IncidentValidationException("That sector doesn't belong to this incident.");
+
+        var action = new IncidentAction
+        {
+            IncidentId = incident.Id,
+            Kind = kind,
+            Text = text,
+            Source = source,
+            RaisedByName = raisedByName,
+            RaisedByEmployeeId = raisedByEmployeeId,
+            AssignedToEmployeeId = assignedToEmployeeId,
+            AssignedToName = assignedToEmployeeId is null ? assignedToName : null,
+        };
+        if (sectorId is not null) action.SectorId = sectorId;
+        // Same navigation-fixup gotcha as AddSectorAsync's own comment --
+        // a brand-new entity's FK scalar alone doesn't resolve the
+        // navigation, so ToDto's AssignedToEmployee?.DisplayName would
+        // otherwise come back null until the next fresh GET.
+        if (assignedToEmployeeId is not null)
+            action.AssignedToEmployee = await db.Employees.FindAsync([assignedToEmployeeId], ct);
+
+        // Not also added to incident.Actions -- same EF change-tracker
+        // fixup gotcha documented on QueueResourceChangeUpdate/AddSectorAsync.
+        db.IncidentActions.Add(action);
+        var label = kind == IncidentActionKind.Task ? "Task raised" : "Resource request";
+        QueueActionChangeUpdate(incident, source, $"{label}: {text}");
+
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return incident;
+    }
+
+    // Idempotent, same guard as AcknowledgeUpdateAsync.
+    public async Task<Incident?> AcknowledgeActionAsync(Guid organisationId, Guid incidentId, Guid actionId, string acknowledgedByName, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var action = incident.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action is null) return incident;
+
+        if (action.AcknowledgedAtUtc is null)
+        {
+            action.AcknowledgedAtUtc = DateTimeOffset.UtcNow;
+            action.AcknowledgedByName = acknowledgedByName;
+            if (action.Status == IncidentActionStatus.Open) action.Status = IncidentActionStatus.Acknowledged;
+            QueueActionChangeUpdate(incident, action.Source, $"{action.Text}: acknowledged by {acknowledgedByName}");
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return incident;
+    }
+
+    // Idempotent -- resolving an already-resolved action is a no-op, same
+    // reasoning as AcknowledgeUpdateAsync (two crew members' tablets both
+    // catching up on the same poll can't stomp on the first resolution).
+    public async Task<Incident?> ResolveActionAsync(
+        Guid organisationId, Guid incidentId, Guid actionId, IncidentActionStatus status, string resolvedByName, CancellationToken ct = default)
+    {
+        if (status != IncidentActionStatus.Completed && status != IncidentActionStatus.Declined)
+            throw new IncidentValidationException("Status must be Completed or Declined.");
+
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var action = incident.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action is null) return incident;
+
+        if (action.ResolvedAtUtc is null)
+        {
+            action.Status = status;
+            action.ResolvedAtUtc = DateTimeOffset.UtcNow;
+            action.ResolvedByName = resolvedByName;
+            QueueActionChangeUpdate(incident, action.Source, $"{action.Text}: {status.ToString().ToLowerInvariant()} by {resolvedByName}");
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return incident;
+    }
+
+    // Append-only -- nothing here ever edits or removes a prior update.
+    public async Task<Incident?> AddUpdateAsync(
+        Guid organisationId, Guid incidentId, IncidentUpdateSource source,
+        string? authorName, Guid? authorEmployeeId, string text, IncidentUpdateType updateType,
+        Guid? replyToUpdateId = null, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        if (replyToUpdateId is not null && incident.Updates.All(u => u.Id != replyToUpdateId))
+            throw new IncidentValidationException("That message doesn't belong to this incident.");
 
         db.IncidentUpdates.Add(new IncidentUpdate
         {
@@ -472,6 +580,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             AuthorEmployeeId = authorEmployeeId,
             Text = text,
             UpdateType = updateType,
+            ReplyToUpdateId = replyToUpdateId,
         });
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);

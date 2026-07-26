@@ -22,6 +22,7 @@ public class ApplicationDbContext(
     public DbSet<IncidentAppliance> IncidentAppliances => Set<IncidentAppliance>();
     public DbSet<IncidentUpdate> IncidentUpdates => Set<IncidentUpdate>();
     public DbSet<IncidentSector> IncidentSectors => Set<IncidentSector>();
+    public DbSet<IncidentAction> IncidentActions => Set<IncidentAction>();
     public DbSet<IntegrationApiKey> IntegrationApiKeys => Set<IntegrationApiKey>();
     public DbSet<EmployeeStationAssignment> EmployeeStationAssignments => Set<EmployeeStationAssignment>();
     public DbSet<VehicleProfile> VehicleProfiles => Set<VehicleProfile>();
@@ -87,6 +88,25 @@ public class ApplicationDbContext(
             e.HasMany(i => i.Appliances).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Updates).WithOne(u => u.Incident).HasForeignKey(u => u.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Sectors).WithOne(s => s.Incident).HasForeignKey(s => s.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(i => i.Actions).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IncidentUpdate>(e =>
+        {
+            // Restrict, not Cascade or SetNull: nothing ever deletes an
+            // IncidentUpdate (append-only, see the entity's own comment),
+            // so this never actually fires -- Restrict is just the safe
+            // default for a self-reference with no real delete path.
+            e.HasOne(u => u.ReplyToUpdate).WithMany().HasForeignKey(u => u.ReplyToUpdateId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<IncidentAction>(e =>
+        {
+            e.HasOne(a => a.AssignedToEmployee).WithMany().HasForeignKey(a => a.AssignedToEmployeeId).OnDelete(DeleteBehavior.SetNull);
+            // SetNull, same reasoning as IncidentAppliance.SectorId -- a
+            // deleted sector shouldn't block or cascade into removing a
+            // task/request that happened to be tied to it.
+            e.HasOne(a => a.Sector).WithMany().HasForeignKey(a => a.SectorId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<IncidentAppliance>(e =>

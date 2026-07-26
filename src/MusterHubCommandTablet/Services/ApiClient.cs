@@ -45,11 +45,20 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<(IncidentDto? Result, string? Error)> GetIncidentAsync(Guid id) =>
         GetAsync<IncidentDto>($"api/tablet/incidents/{id}");
 
-    public Task<(IncidentDto? Result, string? Error)> AddNoteAsync(Guid incidentId, string text) =>
-        PostAsync<AddCrewNoteRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/notes", new AddCrewNoteRequest(text, null));
+    public Task<(IncidentDto? Result, string? Error)> AddNoteAsync(Guid incidentId, string text, Guid? replyToUpdateId = null) =>
+        PostAsync<AddCrewNoteRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/notes", new AddCrewNoteRequest(text, null, replyToUpdateId));
 
     public Task<(IncidentDto? Result, string? Error)> AcknowledgeUpdateAsync(Guid incidentId, Guid updateId) =>
         PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/updates/{updateId}/acknowledge");
+
+    public Task<(IncidentDto? Result, string? Error)> AddActionAsync(Guid incidentId, AddActionRequest request) =>
+        PostAsync<AddActionRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/actions", request);
+
+    public Task<(IncidentDto? Result, string? Error)> AcknowledgeActionAsync(Guid incidentId, Guid actionId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/actions/{actionId}/acknowledge");
+
+    public Task<(IncidentDto? Result, string? Error)> ResolveActionAsync(Guid incidentId, Guid actionId, string status) =>
+        PostAsync<ResolveActionRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/actions/{actionId}/resolve", new ResolveActionRequest(status));
 
     public Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId) =>
         GetAsync<RouteResponseDto>($"api/tablet/incidents/{incidentId}/route");
