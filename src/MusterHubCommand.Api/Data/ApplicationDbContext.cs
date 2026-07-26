@@ -21,6 +21,7 @@ public class ApplicationDbContext(
     public DbSet<Incident> Incidents => Set<Incident>();
     public DbSet<IncidentAppliance> IncidentAppliances => Set<IncidentAppliance>();
     public DbSet<IncidentUpdate> IncidentUpdates => Set<IncidentUpdate>();
+    public DbSet<IncidentSector> IncidentSectors => Set<IncidentSector>();
     public DbSet<IntegrationApiKey> IntegrationApiKeys => Set<IntegrationApiKey>();
     public DbSet<EmployeeStationAssignment> EmployeeStationAssignments => Set<EmployeeStationAssignment>();
     public DbSet<VehicleProfile> VehicleProfiles => Set<VehicleProfile>();
@@ -85,6 +86,28 @@ public class ApplicationDbContext(
             e.HasOne(i => i.OrgUnit).WithMany().HasForeignKey(i => i.OrgUnitId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(i => i.Appliances).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Updates).WithOne(u => u.Incident).HasForeignKey(u => u.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(i => i.Sectors).WithOne(s => s.Incident).HasForeignKey(s => s.IncidentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IncidentAppliance>(e =>
+        {
+            // SetNull, not Restrict: deleting a sector should just drop
+            // its appliances back to Unassigned, not block the delete or
+            // cascade into removing attendance rows.
+            e.HasOne(a => a.Sector).WithMany().HasForeignKey(a => a.SectorId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(a => a.OfficerInChargeEmployee).WithMany().HasForeignKey(a => a.OfficerInChargeEmployeeId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<IncidentSector>(e =>
+        {
+            // Cascade: removing a node removes its descendant nodes too --
+            // a sub-tree without its parent doesn't mean anything. This is
+            // independent from IncidentAppliance.SectorId above, which
+            // stays SetNull -- an appliance attached anywhere in a deleted
+            // sub-tree goes back to Unassigned, it never gets silently
+            // detached from the incident's attendance.
+            e.HasOne(s => s.Parent).WithMany().HasForeignKey(s => s.ParentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(s => s.PersonInChargeEmployee).WithMany().HasForeignKey(s => s.PersonInChargeEmployeeId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<IntegrationApiKey>(e =>

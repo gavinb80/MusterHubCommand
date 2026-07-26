@@ -47,4 +47,5 @@ public class Incident : ITenantScoped
 
     public List<IncidentAppliance> Appliances { get; set; } = [];
     public List<IncidentUpdate> Updates { get; set; } = [];
+    public List<IncidentSector> Sectors { get; set; } = [];
 }

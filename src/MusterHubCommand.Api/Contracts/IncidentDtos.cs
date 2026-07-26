@@ -1,19 +1,36 @@
+using Microsoft.EntityFrameworkCore;
+using MusterHubCommand.Api.Data;
 using MusterHubCommand.Api.Data.Entities;
 
 namespace MusterHubCommand.Api.Contracts;
 
-public record IncidentApplianceDto(Guid Id, string Callsign, ApplianceStatus Status, DateTimeOffset UpdatedAtUtc);
+// OfficerInChargeName is always the display name -- resolved server-side
+// from Employee.DisplayName when OfficerInChargeEmployeeId is set, same
+// rule IncidentSectorDto.PersonInChargeName already follows.
+public record IncidentApplianceDto(
+    Guid Id, string Callsign, ApplianceStatus Status, ResourceKind ResourceKind, Guid? SectorId,
+    Guid? OfficerInChargeEmployeeId, string? OfficerInChargeName,
+    double? Latitude, double? Longitude, DateTimeOffset? LocationUpdatedAtUtc, DateTimeOffset UpdatedAtUtc);
+
+// PersonInChargeName is always the display name -- resolved server-side
+// from Employee.DisplayName when PersonInChargeEmployeeId is set, or the
+// free-text name otherwise, so clients never need a second lookup just to
+// show who's in charge of a node.
+public record IncidentSectorDto(
+    Guid Id, string Name, int SortOrder, Guid? ParentId,
+    Guid? PersonInChargeEmployeeId, string? PersonInChargeName);
 
 public record IncidentUpdateDto(
     Guid Id, IncidentUpdateSource Source, string? AuthorName, Guid? AuthorEmployeeId,
-    string Text, IncidentUpdateType UpdateType, DateTimeOffset CreatedAtUtc);
+    string Text, IncidentUpdateType UpdateType,
+    DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName, DateTimeOffset CreatedAtUtc);
 
 public record IncidentDto(
     Guid Id, string ExternalReference, string IncidentType, string? Description,
     string? Address, double? Latitude, double? Longitude,
     Guid OrgUnitId, string OrgUnitName, IncidentStatus Status,
     DateTimeOffset StartedAtUtc, DateTimeOffset? ClosedAtUtc, DateTimeOffset UpdatedAtUtc,
-    List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates);
+    List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates, List<IncidentSectorDto> Sectors);
 
 // The list view -- no appliances/updates payload, kept light for a
 // station's "what's active" screen (tablet home and control room's list).
@@ -38,12 +55,41 @@ public record UpdateIncidentRequest(
 public record SetApplianceEntry(string Callsign, ApplianceStatus Status);
 public record SetAppliancesRequest(List<SetApplianceEntry> Appliances);
 
+public record AddSectorRequest(
+    string Name, Guid? ParentId = null,
+    Guid? PersonInChargeEmployeeId = null, string? PersonInChargeName = null);
+
+// Full-replace, not a sparse patch: ParentId/PersonInCharge are themselves
+// nullable (null parent = a root, null person = nobody assigned yet), so
+// there's no spare bit left to mean "leave this one alone" the way
+// UpdateIncidentRequest's optional fields do. The web edit form always has
+// the node's current state loaded already, so submitting the complete
+// desired state costs it nothing.
+public record UpdateSectorRequest(
+    string Name, Guid? ParentId,
+    Guid? PersonInChargeEmployeeId, string? PersonInChargeName);
+
+public record AssignSectorRequest(Guid? SectorId);
+public record SetResourceKindRequest(ResourceKind ResourceKind);
+
+// Same full-replace reasoning as UpdateSectorRequest -- EmployeeId is
+// itself nullable (null = nobody assigned), so there's no spare bit to
+// mean "leave alone."
+public record SetApplianceOfficerRequest(Guid? OfficerInChargeEmployeeId, string? OfficerInChargeName);
+
 // Source is never a caller-supplied field: the integration API and the
 // control room console both always write ControlRoom; only
 // TabletIncidentsController's own note endpoint ever writes Crew.
 public record AddIncidentUpdateRequest(string? AuthorName, string Text, IncidentUpdateType UpdateType = IncidentUpdateType.General);
 
 public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId);
+
+// Same trust model as AddIncidentUpdateRequest.AuthorName -- the control
+// room console already knows its own operator's display name from their
+// session, Vision never calls this endpoint, so there's no case where a
+// server-resolved identity is needed here that the caller doesn't already
+// have.
+public record AcknowledgeUpdateRequest(string? AcknowledgedByName);
 
 public static class IncidentMapping
 {
@@ -53,12 +99,51 @@ public static class IncidentMapping
         incident.OrgUnitId, incident.OrgUnit?.Name ?? "", incident.Status,
         incident.StartedAtUtc, incident.ClosedAtUtc, incident.UpdatedAtUtc,
         incident.Appliances.OrderBy(a => a.Callsign)
-            .Select(a => new IncidentApplianceDto(a.Id, a.Callsign, a.Status, a.UpdatedAtUtc)).ToList(),
+            .Select(a => new IncidentApplianceDto(
+                a.Id, a.Callsign, a.Status, a.ResourceKind, a.SectorId,
+                a.OfficerInChargeEmployeeId,
+                a.OfficerInChargeEmployeeId is not null ? a.OfficerInChargeEmployee?.DisplayName : a.OfficerInChargeName,
+                null, null, null, a.UpdatedAtUtc)).ToList(),
         incident.Updates.OrderBy(u => u.CreatedAtUtc)
-            .Select(u => new IncidentUpdateDto(u.Id, u.Source, u.AuthorName, u.AuthorEmployeeId, u.Text, u.UpdateType, u.CreatedAtUtc)).ToList());
+            .Select(u => new IncidentUpdateDto(u.Id, u.Source, u.AuthorName, u.AuthorEmployeeId, u.Text, u.UpdateType, u.AcknowledgedAtUtc, u.AcknowledgedByName, u.CreatedAtUtc)).ToList(),
+        incident.Sectors.OrderBy(s => s.SortOrder)
+            .Select(s => new IncidentSectorDto(
+                s.Id, s.Name, s.SortOrder, s.ParentId,
+                s.PersonInChargeEmployeeId,
+                s.PersonInChargeEmployeeId is not null ? s.PersonInChargeEmployee?.DisplayName : s.PersonInChargeName))
+            .ToList());
 
     public static IncidentSummaryDto ToSummaryDto(this Incident incident) => new(
         incident.Id, incident.ExternalReference, incident.IncidentType, incident.Address,
         incident.OrgUnitId, incident.OrgUnit?.Name ?? "", incident.Status,
         incident.StartedAtUtc, incident.UpdatedAtUtc);
+
+    // Only the two "view" endpoints (control room + tablet Get) use this --
+    // every write-action response still returns the plain ToDto() above.
+    // A write's own response doesn't need to already carry fresh GPS
+    // telemetry that wasn't part of what was just written; the next ~15s
+    // poll picks it up, the same tolerance IsOnline/connectivity already
+    // has elsewhere in this codebase. Re-maps Appliances after the fact
+    // (records, so `with` is cheap) rather than duplicating ToDto's whole
+    // mapping just to thread a lookup dictionary through it.
+    public static async Task<IncidentDto> ToDtoWithLocationsAsync(this Incident incident, ApplicationDbContext db, CancellationToken ct = default)
+    {
+        var dto = incident.ToDto();
+
+        var callsigns = incident.Appliances.Select(a => a.Callsign.ToUpperInvariant()).ToHashSet();
+        var devices = await db.Devices.IgnoreQueryFilters()
+            .Where(d => d.OrganisationId == incident.OrganisationId && d.Callsign != null)
+            .ToListAsync(ct);
+        var deviceByCallsign = devices
+            .Where(d => callsigns.Contains(d.Callsign!.ToUpperInvariant()))
+            .GroupBy(d => d.Callsign!.ToUpperInvariant())
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var enrichedAppliances = dto.Appliances.Select(a =>
+            deviceByCallsign.TryGetValue(a.Callsign.ToUpperInvariant(), out var device)
+                ? a with { Latitude = device.CurrentLatitude, Longitude = device.CurrentLongitude, LocationUpdatedAtUtc = device.LocationUpdatedAtUtc }
+                : a).ToList();
+
+        return dto with { Appliances = enrichedAppliances };
+    }
 }

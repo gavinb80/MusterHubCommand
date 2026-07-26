@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MusterHubCommand.Api.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MusterHubCommand.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260726083305_AddIncidentSectorsAndResourceKind")]
+    partial class AddIncidentSectorsAndResourceKind
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -248,12 +251,6 @@ namespace MusterHubCommand.Api.Migrations
                     b.Property<Guid>("IncidentId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("OfficerInChargeEmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("OfficerInChargeName")
-                        .HasColumnType("text");
-
                     b.Property<int>("ResourceKind")
                         .HasColumnType("integer");
 
@@ -269,8 +266,6 @@ namespace MusterHubCommand.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("IncidentId");
-
-                    b.HasIndex("OfficerInChargeEmployeeId");
 
                     b.HasIndex("SectorId");
 
@@ -293,25 +288,12 @@ namespace MusterHubCommand.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("ParentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("PersonInChargeEmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("PersonInChargeName")
-                        .HasColumnType("text");
-
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("IncidentId");
-
-                    b.HasIndex("ParentId");
-
-                    b.HasIndex("PersonInChargeEmployeeId");
 
                     b.ToTable("IncidentSectors");
                 });
@@ -575,19 +557,12 @@ namespace MusterHubCommand.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.Employee", "OfficerInChargeEmployee")
-                        .WithMany()
-                        .HasForeignKey("OfficerInChargeEmployeeId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("MusterHubCommand.Api.Data.Entities.IncidentSector", "Sector")
                         .WithMany()
                         .HasForeignKey("SectorId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Incident");
-
-                    b.Navigation("OfficerInChargeEmployee");
 
                     b.Navigation("Sector");
                 });
@@ -600,21 +575,7 @@ namespace MusterHubCommand.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.IncidentSector", "Parent")
-                        .WithMany()
-                        .HasForeignKey("ParentId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.Employee", "PersonInChargeEmployee")
-                        .WithMany()
-                        .HasForeignKey("PersonInChargeEmployeeId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.Navigation("Incident");
-
-                    b.Navigation("Parent");
-
-                    b.Navigation("PersonInChargeEmployee");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentUpdate", b =>

@@ -38,7 +38,7 @@ public class IncidentsController(
         if (await RequireOperatorAsync() is ActionResult denied) return denied;
 
         var incident = await incidentService.FindByIdAsync(OrganisationId, id);
-        return incident is null ? NotFound() : Ok(incident.ToDto());
+        return incident is null ? NotFound() : Ok(await incident.ToDtoWithLocationsAsync(db));
     }
 
     [HttpPost]
@@ -85,6 +85,79 @@ public class IncidentsController(
         return updated is null ? NotFound() : Ok(updated.ToDto());
     }
 
+    [HttpPost("{id}/sectors")]
+    public async Task<ActionResult<IncidentDto>> AddSector(Guid id, AddSectorRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("Sector name is required.");
+
+        try
+        {
+            var updated = await incidentService.AddSectorAsync(
+                OrganisationId, id, request.Name.Trim(),
+                request.ParentId, request.PersonInChargeEmployeeId, request.PersonInChargeName);
+            return updated is null ? NotFound() : Ok(updated.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPatch("{id}/sectors/{sectorId}")]
+    public async Task<ActionResult<IncidentDto>> UpdateSector(Guid id, Guid sectorId, UpdateSectorRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("Sector name is required.");
+
+        try
+        {
+            var updated = await incidentService.UpdateSectorAsync(
+                OrganisationId, id, sectorId, request.Name.Trim(),
+                request.ParentId, request.PersonInChargeEmployeeId, request.PersonInChargeName);
+            return updated is null ? NotFound() : Ok(updated.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpDelete("{id}/sectors/{sectorId}")]
+    public async Task<ActionResult<IncidentDto>> DeleteSector(Guid id, Guid sectorId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var updated = await incidentService.DeleteSectorAsync(OrganisationId, id, sectorId);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPatch("{id}/appliances/{applianceId}/sector")]
+    public async Task<ActionResult<IncidentDto>> AssignApplianceSector(Guid id, Guid applianceId, AssignSectorRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        try
+        {
+            var updated = await incidentService.AssignApplianceSectorAsync(OrganisationId, id, applianceId, request.SectorId);
+            return updated is null ? NotFound() : Ok(updated.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPatch("{id}/appliances/{applianceId}/resource-kind")]
+    public async Task<ActionResult<IncidentDto>> SetApplianceResourceKind(Guid id, Guid applianceId, SetResourceKindRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var updated = await incidentService.SetApplianceResourceKindAsync(OrganisationId, id, applianceId, request.ResourceKind);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPatch("{id}/appliances/{applianceId}/officer")]
+    public async Task<ActionResult<IncidentDto>> SetApplianceOfficer(Guid id, Guid applianceId, SetApplianceOfficerRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var updated = await incidentService.SetApplianceOfficerAsync(
+            OrganisationId, id, applianceId, request.OfficerInChargeEmployeeId, request.OfficerInChargeName);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
     [HttpPost("{id}/updates")]
     public async Task<ActionResult<IncidentDto>> AddUpdate(Guid id, AddIncidentUpdateRequest request)
     {
@@ -93,6 +166,15 @@ public class IncidentsController(
         var updated = await incidentService.AddUpdateAsync(
             OrganisationId, id, IncidentUpdateSource.ControlRoom,
             request.AuthorName, null, request.Text, request.UpdateType);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPost("{id}/updates/{updateId}/acknowledge")]
+    public async Task<ActionResult<IncidentDto>> AcknowledgeUpdate(Guid id, Guid updateId, AcknowledgeUpdateRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var updated = await incidentService.AcknowledgeUpdateAsync(OrganisationId, id, updateId, request.AcknowledgedByName ?? "Control Room");
         return updated is null ? NotFound() : Ok(updated.ToDto());
     }
 

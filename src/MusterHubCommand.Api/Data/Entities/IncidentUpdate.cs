@@ -37,5 +37,11 @@ public class IncidentUpdate
     public required string Text { get; set; }
     public IncidentUpdateType UpdateType { get; set; } = IncidentUpdateType.General;
 
+    // Null = not yet acknowledged. Only meaningful for General/Hazard --
+    // a ResourceChange line is a status log entry, not something anyone
+    // needs to confirm they've seen.
+    public DateTimeOffset? AcknowledgedAtUtc { get; set; }
+    public string? AcknowledgedByName { get; set; }
+
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }

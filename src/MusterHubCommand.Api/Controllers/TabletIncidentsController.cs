@@ -33,7 +33,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
     {
         var incident = await incidentService.FindByIdAsync(OrganisationId, id);
         if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
-        return Ok(incident.ToDto());
+        return Ok(await incident.ToDtoWithLocationsAsync(db));
     }
 
     [HttpPost("{id}/notes")]
@@ -51,6 +51,16 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
             OrganisationId, id, IncidentUpdateSource.Crew,
             DeviceCallsign, request.AuthorEmployeeId, request.Text, IncidentUpdateType.Note);
         return Ok(updated!.ToDto());
+    }
+
+    [HttpPost("{id}/updates/{updateId}/acknowledge")]
+    public async Task<ActionResult<IncidentDto>> AcknowledgeUpdate(Guid id, Guid updateId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        var updated = await incidentService.AcknowledgeUpdateAsync(OrganisationId, id, updateId, DeviceCallsign!);
+        return Ok((updated ?? incident).ToDto());
     }
 
     // From this device's own last-reported GPS to the incident, using
