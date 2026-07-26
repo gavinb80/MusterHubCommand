@@ -133,8 +133,15 @@ type TimelineEntry = {
   timestamp: string;
 };
 
+// "created" deliberately isn't brand-secondary (#0B1F3A) -- that's a
+// light-theme text colour, near-black itself, so a dot painted with it is
+// essentially invisible against the dark theme's own near-black page
+// background (confirmed live on the tablet, which shares this same
+// token). --content-secondary is already redefined per theme rather than
+// a single static hex, which is the actual requirement for a colour used
+// on a small filled dot rather than a full-width surface.
 const TIMELINE_DOT_STYLES: Record<TimelineEntry["kind"], string> = {
-  created: "bg-brand-secondary",
+  created: "bg-(--content-secondary)",
   resourceChange: "bg-status-mobilised",
   hazard: "bg-status-hazard",
   note: "bg-(--content-secondary)",

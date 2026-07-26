@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -44,8 +45,27 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     [ObservableProperty]
     private IncidentDto? incident;
 
+    public string FormattedAddress => Incident?.Address?.TrimEnd(',', ' ') ?? string.Empty;
+
+    // Fixed instance, never reassigned -- SyncTimeline below updates it in
+    // place. Confirmed live: rebinding a fresh List<TimelineEntry> to
+    // ItemsSource on every 15s poll reset the CollectionView's scroll
+    // position to the top every time, which is exactly the kind of thing
+    // that makes a crew stop trusting the auto-refresh. Same fix as
+    // ActiveIncidentsViewModel.SyncIncidents already applies to the
+    // incident list, for the same reason.
+    public ObservableCollection<TimelineEntry> Timeline { get; } = [];
+
+    // Reflects only whether the last poll actually succeeded -- not a
+    // real-time connection state (this app polls, it doesn't hold a live
+    // socket). Good enough to tell a crew "the tablet hasn't heard back
+    // in a while", which is the actual thing worth surfacing without
+    // taking on SignalR/a persistent connection.
     [ObservableProperty]
-    private List<TimelineEntry> timeline = [];
+    [NotifyPropertyChangedFor(nameof(ConnectivityLabel))]
+    private bool isOnline = true;
+
+    public string ConnectivityLabel => IsOnline ? "Live" : "Reconnecting...";
 
     // Session-only, defaults visible -- resets on every fresh entry to this
     // page rather than persisting, same as the web console's own toggle.
@@ -137,6 +157,18 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
         return entries.OrderBy(e => e.Timestamp).ToList();
     }
 
+    // Append-only in practice -- an IncidentUpdate row is immutable once
+    // written, and "created"/"closed" are each stable once they exist -- so
+    // syncing never needs to remove or edit an existing entry, only add
+    // whatever's in latest that isn't in Timeline yet, matching BuildTimeline's
+    // own already-sorted order.
+    private void SyncTimeline(List<TimelineEntry> latest)
+    {
+        var existingIds = Timeline.Select(t => t.Id).ToHashSet();
+        foreach (var entry in latest.Where(e => !existingIds.Contains(e.Id)))
+            Timeline.Add(entry);
+    }
+
     [RelayCommand]
     private void ToggleMap() => IsMapVisible = !IsMapVisible;
 
@@ -204,17 +236,20 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             if (result is null)
             {
                 ErrorMessage = error ?? "Couldn't load this incident.";
+                IsOnline = false;
                 return;
             }
 
             ErrorMessage = string.Empty;
+            IsOnline = true;
             // Only re-notify MapSource when the coordinates actually moved --
             // this fires on every 15s poll, and reassigning WebView.Source
             // unconditionally would reload the map (losing the crew's pan/
             // zoom) even when nothing about the location changed.
             var locationChanged = Incident?.Latitude != result.Latitude || Incident?.Longitude != result.Longitude;
             Incident = result;
-            Timeline = BuildTimeline(result);
+            OnPropertyChanged(nameof(FormattedAddress));
+            SyncTimeline(BuildTimeline(result));
             OnPropertyChanged(nameof(HasLocation));
             OnPropertyChanged(nameof(ShowMap));
             if (locationChanged) OnPropertyChanged(nameof(MapSource));
@@ -233,6 +268,7 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
         {
             SentrySdk.CaptureException(ex);
             ErrorMessage = "Something went wrong loading this incident.";
+            IsOnline = false;
         }
         finally
         {
@@ -268,7 +304,7 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             // card until the next 15s poll -- confirmed live: the field
             // clears (a successful post) but the crew sees nothing change,
             // which reads as "did that actually work?" for up to 15s.
-            Timeline = BuildTimeline(result);
+            SyncTimeline(BuildTimeline(result));
             NoteText = string.Empty;
         }
         catch (Exception ex)
@@ -290,8 +326,8 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     // Callsign set), so blocking the transition to the driving screen on it
     // too just adds a second network round-trip of dead time on top of
     // NavigateViewModel's own (GPS fix, report, route). Fired instead, its
-    // own failure only logs, never surfaces here -- the crew is already
-    // looking at the nav screen by the time it would resolve.
+    // own failure is now visible (see UpdateAttendanceStatusAsync below),
+    // just not until the crew is back looking at this page.
     [RelayCommand]
     private async Task StartNavigationAsync()
     {
@@ -316,12 +352,24 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             if (result is not null)
             {
                 Incident = result;
-                Timeline = BuildTimeline(result);
+                SyncTimeline(BuildTimeline(result));
+            }
+            // Not surfaced live -- the crew is already on NavigatePage by
+            // the time this resolves. But this failing silently (Sentry
+            // only) meant Control Room could be shown as still at the
+            // station with genuinely no way for the crew to know. Setting
+            // it here means the pinned error banner on THIS page shows it
+            // the next time they're back here, instead of it vanishing
+            // entirely.
+            else if (error is not null && error != ApiClient.RevokedError)
+            {
+                ErrorMessage = "Couldn't update attendance status when navigation started -- check Control Room knows you're en route.";
             }
         }
         catch (Exception ex)
         {
             SentrySdk.CaptureException(ex);
+            ErrorMessage = "Couldn't update attendance status when navigation started -- check Control Room knows you're en route.";
         }
     }
 

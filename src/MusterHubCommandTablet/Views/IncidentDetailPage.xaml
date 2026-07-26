@@ -6,142 +6,145 @@
     xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
     xmlns:models="clr-namespace:MusterHubCommandTablet.Models"
     x:DataType="vm:IncidentDetailViewModel"
-    Shell.NavBarIsVisible="False">
+    Shell.NavBarIsVisible="False"
+    Padding="20">
 
-    <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="16">
+    <Grid ColumnDefinitions="4*, 6*" RowDefinitions="Auto, Auto, *" ColumnSpacing="24" VerticalOptions="Fill">
+        <!-- Top Bar (Spans both columns) -->
+        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="Auto, *, Auto, Auto, Auto" Margin="0,0,0,24">
+            <Button Grid.Column="0" Text="&#8592; Back" Style="{StaticResource SecondaryButton}" Command="{Binding GoBackCommand}" VerticalOptions="Center" />
 
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button Grid.Column="0" Text="&#8592; Back" Style="{StaticResource SecondaryButton}" Command="{Binding GoBackCommand}" />
-                <Border Grid.Column="2" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Incident.Status, Converter={StaticResource StatusToColorConverter}}" VerticalOptions="Center">
-                    <Label Text="{Binding Incident.Status}" Style="{StaticResource StatusPillLabel}" />
-                </Border>
-            </Grid>
+            <HorizontalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="16,0,0,0" Spacing="12">
+                <Label Text="{Binding Incident.IncidentType}" Style="{StaticResource PageTitleLabel}" VerticalOptions="Center" />
+                <Label Text="{Binding FormattedAddress}" Style="{StaticResource CardSubtitleLabel}" VerticalOptions="Center" />
+            </HorizontalStackLayout>
 
-            <Label Text="{Binding Incident.IncidentType}" Style="{StaticResource PageTitleLabel}" />
-            <Label Text="{Binding Incident.Address}" Style="{StaticResource CardSubtitleLabel}" />
-            <Label Text="{Binding Incident.Description}" IsVisible="{Binding Incident.Description, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+            <Button Grid.Column="2" Text="{Binding MapToggleLabel}" Command="{Binding ToggleMapCommand}" Style="{StaticResource SecondaryButton}" VerticalOptions="Center" Margin="0,0,12,0" IsVisible="{Binding HasLocation}" HeightRequest="36" Padding="12,0" />
 
-            <WebView
-                x:Name="MapWebView"
-                Source="{Binding MapSource}"
-                IsVisible="{Binding ShowMap}"
-                HeightRequest="280"
-                Navigated="OnMapNavigated" />
-
-            <Label
-                Text="No location set for this incident yet."
-                Style="{StaticResource CardSubtitleLabel}"
-                IsVisible="{Binding HasLocation, Converter={StaticResource InvertedBoolConverter}}" />
-
-            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasLocation}">
-                <Label
-                    Grid.Column="0"
-                    Text="{Binding RouteSummary}"
-                    Style="{StaticResource CardSubtitleLabel}"
-                    VerticalOptions="Center"
-                    IsVisible="{Binding RouteSummary, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
-                <Button
-                    Grid.Column="1"
-                    Text="{Binding MapToggleLabel}"
-                    Command="{Binding ToggleMapCommand}"
-                    Style="{StaticResource SecondaryButton}" />
-            </Grid>
-
-            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasLocation}">
-                <Button
-                    Grid.Column="0"
-                    Text="Start navigation"
-                    Command="{Binding StartNavigationCommand}"
-                    IsEnabled="{Binding IsStartingNavigation, Converter={StaticResource InvertedBoolConverter}}"
-                    HorizontalOptions="Fill" />
-                <ActivityIndicator
-                    Grid.Column="1"
-                    IsRunning="{Binding IsStartingNavigation}"
-                    IsVisible="{Binding IsStartingNavigation}"
-                    Margin="12,0,0,0" />
-            </Grid>
-
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Attendance" Style="{StaticResource CardTitleLabel}" />
-                    <Label Text="No appliances attending yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Incident.Appliances, Converter={StaticResource CollectionEmptyConverter}}" />
-                    <CollectionView ItemsSource="{Binding Incident.Appliances}" SelectionMode="None">
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="models:IncidentApplianceDto">
-                                <Grid ColumnDefinitions="*,Auto" Padding="0,4">
-                                    <Label Grid.Column="0" Text="{Binding Callsign}" FontAttributes="Bold" VerticalOptions="Center" />
-                                    <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}">
-                                        <Label Text="{Binding Status}" Style="{StaticResource StatusPillLabel}" />
-                                    </Border>
-                                </Grid>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-                </VerticalStackLayout>
+            <Border Grid.Column="3" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Incident.Status, Converter={StaticResource StatusToColorConverter}}" VerticalOptions="Center" Margin="0,0,12,0">
+                <Label Text="{Binding Incident.Status}" Style="{StaticResource StatusPillLabel}" />
             </Border>
 
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Timeline" Style="{StaticResource CardTitleLabel}" />
+            <!-- Reflects only whether the last ~15s poll succeeded, not a
+                 live socket. See IsOnline's own comment in the ViewModel. -->
+            <Border Grid.Column="4" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding IsOnline, Converter={StaticResource OnlineToColorConverter}}" VerticalOptions="Center">
+                <Label Text="{Binding ConnectivityLabel}" Style="{StaticResource StatusPillLabel}" />
+            </Border>
+        </Grid>
 
-                    <CollectionView ItemsSource="{Binding Timeline}" SelectionMode="None">
+        <!-- Pinned error banner, own row so it can never overlap the
+             Timeline card below it. Was briefly sharing a Grid.Row with
+             that card. Confirmed live: the message rendered bleeding
+             out past the card's bottom-right corner, partly clipped by
+             the screen edge. -->
+        <Border
+            Grid.Row="1"
+            Grid.ColumnSpan="2"
+            IsVisible="{Binding HasError}"
+            BackgroundColor="{StaticResource StatusHazard}"
+            StrokeThickness="0"
+            StrokeShape="RoundRectangle 10"
+            Padding="16,12"
+            Margin="0,0,0,16">
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource White}" FontAttributes="Bold" />
+        </Border>
+
+        <!-- Left Column: Navigation & Map -->
+        <Grid Grid.Row="2" Grid.Column="0" RowDefinitions="*, Auto" RowSpacing="24" VerticalOptions="Fill" IsVisible="{Binding ShowMap}">
+            <Grid Grid.Row="0" RowDefinitions="Auto, *" VerticalOptions="Fill">
+                <Label Grid.Row="0" Text="Route to incident" Style="{StaticResource CardTitleLabel}" FontSize="16" FontAttributes="Bold" Margin="0,0,0,8" IsVisible="{Binding HasLocation}" />
+                <Border Grid.Row="1" StrokeShape="RoundRectangle 8" StrokeThickness="0" VerticalOptions="Fill" HorizontalOptions="Fill">
+                    <WebView x:Name="MapWebView" Source="{Binding MapSource}" Navigated="OnMapNavigated" VerticalOptions="Fill" HorizontalOptions="Fill" />
+                </Border>
+                
+                <Label Grid.Row="1" Text="No location set for this incident yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding HasLocation, Converter={StaticResource InvertedBoolConverter}}" HorizontalOptions="Center" VerticalOptions="Center" />
+            </Grid>
+
+            <VerticalStackLayout Grid.Row="1" Spacing="12">
+                <Label Text="{Binding RouteSummary}" Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding RouteSummary, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                
+                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasLocation}">
+                    <Button Grid.Column="0" Text="Start navigation" Command="{Binding StartNavigationCommand}" IsEnabled="{Binding IsStartingNavigation, Converter={StaticResource InvertedBoolConverter}}" HorizontalOptions="Fill" MinimumHeightRequest="42" FontAttributes="Bold" FontSize="18" BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" TextColor="White" />
+                    <ActivityIndicator Grid.Column="1" IsRunning="{Binding IsStartingNavigation}" IsVisible="{Binding IsStartingNavigation}" Margin="16,0,0,0" />
+                </Grid>
+            </VerticalStackLayout>
+        </Grid>
+
+        <!-- Right Column: Timeline & Attendance -->
+        <Grid Grid.Row="2" Grid.Column="1" RowDefinitions="Auto, *" RowSpacing="16" VerticalOptions="Fill">
+            <Grid.Triggers>
+                <DataTrigger TargetType="Grid" Binding="{Binding ShowMap}" Value="False">
+                    <Setter Property="Grid.Column" Value="0" />
+                    <Setter Property="Grid.ColumnSpan" Value="2" />
+                </DataTrigger>
+            </Grid.Triggers>
+            
+            <VerticalStackLayout Grid.Row="0" Spacing="16">
+                <!-- Description -->
+                <Label Text="{Binding Incident.Description}" IsVisible="{Binding Incident.Description, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+
+                <!-- Attendance Card -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Attendance" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" />
+                        <Label Text="No appliances attending yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Incident.Appliances, Converter={StaticResource CollectionEmptyConverter}}" />
+                        <CollectionView ItemsSource="{Binding Incident.Appliances}" SelectionMode="None">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:IncidentApplianceDto">
+                                    <Border Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="0,0,0,0" Padding="0,12">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Grid.Column="0" Text="{Binding Callsign}" FontAttributes="Bold" VerticalOptions="Center" FontSize="16" />
+                                            <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}">
+                                                <Label Text="{Binding Status}" Style="{StaticResource StatusPillLabel}" FontSize="14" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+
+            <!-- Timeline Card -->
+            <Border Grid.Row="1" Style="{StaticResource CardBorder}" VerticalOptions="Fill">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8" VerticalOptions="Fill">
+                    <Label Grid.Row="0" Text="Timeline" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" />
+
+                    <CollectionView Grid.Row="1" ItemsSource="{Binding Timeline}" SelectionMode="None" VerticalOptions="Fill">
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:TimelineEntry">
-                                <!-- Rail column: a full-height line behind a
-                                     small dot, per row. With tight row
-                                     spacing this reads as one continuous
-                                     line down the card, the same effect the
-                                     web console gets from a single
-                                     absolutely-positioned line, achieved
-                                     here per-row since MAUI has no
-                                     equivalent to that. -->
-                                <Grid ColumnDefinitions="20,*" Padding="0,0,0,12">
-                                    <Border
-                                        Grid.Column="0"
-                                        WidthRequest="2"
-                                        BackgroundColor="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}"
-                                        StrokeThickness="0"
-                                        HorizontalOptions="Center"
-                                        VerticalOptions="Fill"
-                                        Margin="0,4,0,0" />
-                                    <Border
-                                        Grid.Column="0"
-                                        WidthRequest="10"
-                                        HeightRequest="10"
-                                        StrokeShape="RoundRectangle 5"
-                                        StrokeThickness="0"
-                                        BackgroundColor="{Binding Kind, Converter={StaticResource TimelineKindToColorConverter}}"
-                                        HorizontalOptions="Center"
-                                        VerticalOptions="Start"
-                                        Margin="0,4,0,0" />
-                                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Grid ColumnDefinitions="24,*" Padding="0,0,0,12">
+                                    <!-- Bottom margin is negative on purpose: this row's own
+                                         Grid.Padding bottom (12) plus the next row's dot Margin
+                                         top (6) otherwise leaves an 18px visible gap before the
+                                         line reaches the next dot. The -12 cancels this row's
+                                         own padding inset so the line runs right up to (within
+                                         6px of) the next entry's dot, reading as one continuous
+                                         rail instead of separate dashes. -->
+                                    <Border Grid.Column="0" WidthRequest="2" BackgroundColor="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="0" HorizontalOptions="Center" VerticalOptions="Fill" Margin="0,6,0,-12" />
+                                    <Border Grid.Column="0" WidthRequest="12" HeightRequest="12" StrokeShape="RoundRectangle 6" StrokeThickness="0" BackgroundColor="{Binding Kind, Converter={StaticResource TimelineKindToColorConverter}}" HorizontalOptions="Center" VerticalOptions="Start" Margin="0,6,0,0" />
+                                    <VerticalStackLayout Grid.Column="1" Spacing="4">
                                         <Grid ColumnDefinitions="*,Auto">
-                                            <Label
-                                                Grid.Column="0"
-                                                Text="{Binding Caption}"
-                                                Style="{StaticResource CaptionLabel}"
-                                                FontAttributes="Bold"
-                                                TextColor="{Binding Kind, Converter={StaticResource TimelineKindToColorConverter}}" />
-                                            <Label Grid.Column="1" Text="{Binding Timestamp, StringFormat='{0:g}'}" Style="{StaticResource CaptionLabel}" />
+                                            <Label Grid.Column="0" Text="{Binding Caption}" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" FontSize="14" TextColor="{Binding Kind, Converter={StaticResource TimelineKindToColorConverter}}" />
+                                            <Label Grid.Column="1" Text="{Binding Timestamp, StringFormat='{0:g}'}" Style="{StaticResource CaptionLabel}" FontSize="13" />
                                         </Grid>
-                                        <Label Text="{Binding Text}" />
+                                        <Label Text="{Binding Text}" FontSize="15" />
                                     </VerticalStackLayout>
                                 </Grid>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
 
-                    <Editor Placeholder="Add a note..." Text="{Binding NoteText}" AutoSize="TextChanges" MaxLength="1000" />
-                    <Button Text="Post note" Command="{Binding AddNoteCommand}" IsEnabled="{Binding IsPostingNote, Converter={StaticResource InvertedBoolConverter}}" HorizontalOptions="Start" />
-                </VerticalStackLayout>
+                    <!-- Note Entry Redesign -->
+                    <Border Grid.Row="2" Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="12,8" Margin="0,8,0,0">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Editor Grid.Column="0" Placeholder="Add a note..." Text="{Binding NoteText}" AutoSize="TextChanges" MaxLength="1000" VerticalOptions="Center" BackgroundColor="Transparent" MaximumHeightRequest="100" />
+                            <Button Grid.Column="1" Text="Post" Command="{Binding AddNoteCommand}" IsEnabled="{Binding IsPostingNote, Converter={StaticResource InvertedBoolConverter}}" VerticalOptions="Center" Style="{StaticResource SecondaryButton}" />
+                        </Grid>
+                    </Border>
+                </Grid>
             </Border>
-
-            <Label
-                Text="{Binding ErrorMessage}"
-                TextColor="{StaticResource StatusHazard}"
-                IsVisible="{Binding HasError}" />
-
-        </VerticalStackLayout>
-    </ScrollView>
+        </Grid>
+    </Grid>
 </ContentPage>
