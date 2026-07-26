@@ -28,6 +28,7 @@ export interface EmployeeDto {
 
 export type IncidentStatus = "Open" | "Closed" | "Cancelled";
 export type ApplianceStatus = "Mobilised" | "EnRoute" | "OnScene" | "StoodDown";
+export type ResourceKind = "Appliance" | "OfficerVehicle" | "Specialist";
 export type IncidentUpdateSource = "ControlRoom" | "Crew";
 export type IncidentUpdateType = "General" | "Hazard" | "ResourceChange" | "Note";
 
@@ -35,7 +36,28 @@ export interface IncidentApplianceDto {
   id: string;
   callsign: string;
   status: ApplianceStatus;
+  resourceKind: ResourceKind;
+  sectorId: string | null;
+  officerInChargeEmployeeId: string | null;
+  // Always the display name -- resolved server-side the same way
+  // IncidentSectorDto.personInChargeName is.
+  officerInChargeName: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  locationUpdatedAtUtc: string | null;
   updatedAtUtc: string;
+}
+
+export interface IncidentSectorDto {
+  id: string;
+  name: string;
+  sortOrder: number;
+  parentId: string | null;
+  personInChargeEmployeeId: string | null;
+  // Always the display name -- resolved server-side from the linked
+  // Employee when personInChargeEmployeeId is set, or the free-text name
+  // otherwise.
+  personInChargeName: string | null;
 }
 
 export interface IncidentUpdateDto {
@@ -45,6 +67,8 @@ export interface IncidentUpdateDto {
   authorEmployeeId: string | null;
   text: string;
   updateType: IncidentUpdateType;
+  acknowledgedAtUtc: string | null;
+  acknowledgedByName: string | null;
   createdAtUtc: string;
 }
 
@@ -64,6 +88,7 @@ export interface IncidentDto {
   updatedAtUtc: string;
   appliances: IncidentApplianceDto[];
   updates: IncidentUpdateDto[];
+  sectors: IncidentSectorDto[];
 }
 
 export interface IncidentSummaryDto {
@@ -108,6 +133,41 @@ export interface AddIncidentUpdateRequest {
   authorName?: string | null;
   text: string;
   updateType?: IncidentUpdateType;
+}
+
+export interface AcknowledgeUpdateRequest {
+  acknowledgedByName?: string | null;
+}
+
+export interface AddSectorRequest {
+  name: string;
+  parentId?: string | null;
+  personInChargeEmployeeId?: string | null;
+  personInChargeName?: string | null;
+}
+
+// Full-replace, not a sparse patch -- see the API's own UpdateSectorRequest
+// comment for why (parentId/personInCharge are themselves nullable, so
+// there's no spare bit left to mean "leave this alone").
+export interface UpdateSectorRequest {
+  name: string;
+  parentId: string | null;
+  personInChargeEmployeeId: string | null;
+  personInChargeName: string | null;
+}
+
+export interface AssignSectorRequest {
+  sectorId: string | null;
+}
+
+export interface SetResourceKindRequest {
+  resourceKind: ResourceKind;
+}
+
+// Full-replace, same reasoning as UpdateSectorRequest.
+export interface SetApplianceOfficerRequest {
+  officerInChargeEmployeeId: string | null;
+  officerInChargeName: string | null;
 }
 
 export interface DeviceDto {

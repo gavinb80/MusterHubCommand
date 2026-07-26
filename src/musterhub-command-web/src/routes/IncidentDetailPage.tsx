@@ -5,9 +5,10 @@ import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import { IncidentMap } from "../components/IncidentMap";
 import { LocationPicker } from "../components/LocationPicker";
+import { ApplianceOfficerControl } from "../components/ApplianceOfficerControl";
 import type {
-  AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, GeocodeResponseDto, IncidentDto, IncidentUpdateType,
-  OrganisationSettingsDto, RouteResponseDto, SetApplianceEntry,
+  AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, EmployeeDto, GeocodeResponseDto, IncidentDto, IncidentUpdateType,
+  MeResponse, OrganisationSettingsDto, ResourceKind, RouteResponseDto, SetApplianceEntry,
 } from "../api/types";
 
 const APPLIANCE_STATUSES: ApplianceStatus[] = ["Mobilised", "EnRoute", "OnScene", "StoodDown"];
@@ -20,11 +21,22 @@ const APPLIANCE_STATUS_STYLES: Record<ApplianceStatus, string> = {
   StoodDown: "bg-status-stood-down/15 text-status-stood-down",
 };
 
+const RESOURCE_KIND_LABELS: Record<ResourceKind, string> = {
+  Appliance: "Appliance",
+  OfficerVehicle: "Officer",
+  Specialist: "Specialist",
+};
+
 function AttendancePanel({ incident }: { incident: IncidentDto }) {
   const [editing, setEditing] = useState(false);
   const [rows, setRows] = useState<SetApplianceEntry[]>([]);
+  const [newSectorName, setNewSectorName] = useState("");
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => apiFetch<EmployeeDto[]>("/employees") });
+  const employees = employeesQuery.data ?? [];
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
 
   const startEditing = () => {
     setRows(incident.appliances.map((a) => ({ callsign: a.callsign, status: a.status })));
@@ -38,37 +50,160 @@ function AttendancePanel({ incident }: { incident: IncidentDto }) {
         body: JSON.stringify({ appliances }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
+      invalidate();
       showToast("Attendance updated");
       setEditing(false);
     },
     onError: (error) => showToast(error.message, "error"),
   });
 
+  const addSectorMutation = useMutation({
+    mutationFn: (name: string) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/sectors`, { method: "POST", body: JSON.stringify({ name }) }),
+    onSuccess: () => { invalidate(); setNewSectorName(""); },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const deleteSectorMutation = useMutation({
+    mutationFn: (sectorId: string) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/sectors/${sectorId}`, { method: "DELETE" }),
+    onSuccess: () => invalidate(),
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const assignSectorMutation = useMutation({
+    mutationFn: ({ applianceId, sectorId }: { applianceId: string; sectorId: string | null }) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/appliances/${applianceId}/sector`, {
+        method: "PATCH",
+        body: JSON.stringify({ sectorId }),
+      }),
+    onSuccess: () => invalidate(),
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const setResourceKindMutation = useMutation({
+    mutationFn: ({ applianceId, resourceKind }: { applianceId: string; resourceKind: ResourceKind }) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/appliances/${applianceId}/resource-kind`, {
+        method: "PATCH",
+        body: JSON.stringify({ resourceKind }),
+      }),
+    onSuccess: () => invalidate(),
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  // Unassigned last, and only shown if it actually has anyone in it -- an
+  // incident with every appliance sectored shouldn't show an empty
+  // "Unassigned" header. Root sectors only (no parentId) -- once a real
+  // multi-level hierarchy exists (see IncidentHierarchyPage), a nested
+  // node like "Sector 1 Commander" showing up as its own flat group here
+  // too would just be a confusing near-duplicate of "Sector 1". This quick
+  // card stays a shallow glance; the actual tree lives on its own screen.
+  const rootSectors = incident.sectors.filter((s) => !s.parentId);
+  const rootSectorIds = new Set(rootSectors.map((s) => s.id));
+  const sectorGroups = [
+    ...rootSectors.map((s) => ({ sector: s, appliances: incident.appliances.filter((a) => a.sectorId === s.id) })),
+    { sector: null, appliances: incident.appliances.filter((a) => !a.sectorId || !rootSectorIds.has(a.sectorId)) },
+  ].filter((g) => g.sector !== null || g.appliances.length > 0);
+
   return (
     <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
       <div className="flex items-center justify-between">
         <h2 className="text-card-title font-semibold text-(--content-primary)">Attendance</h2>
-        {!editing && (
-          <button type="button" onClick={startEditing} className="text-body text-brand-primary">
-            Edit
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <Link to={`/incidents/${incident.id}/hierarchy`} className="text-body text-brand-primary">
+            View hierarchy
+          </Link>
+          {!editing && (
+            <button type="button" onClick={startEditing} className="text-body text-brand-primary">
+              Edit
+            </button>
+          )}
+        </div>
       </div>
 
       {!editing && (
-        <div className="mt-3 flex flex-col gap-2">
+        <div className="mt-3 flex flex-col gap-4">
           {incident.appliances.length === 0 && (
             <p className="text-body text-(--content-secondary)">No appliances attending yet.</p>
           )}
-          {incident.appliances.map((a) => (
-            <div key={a.id} className="flex items-center justify-between">
-              <span className="text-body font-medium text-(--content-primary)">{a.callsign}</span>
-              <span className={`rounded-full px-2 py-0.5 text-caption font-semibold ${APPLIANCE_STATUS_STYLES[a.status]}`}>
-                {a.status}
-              </span>
+          {sectorGroups.map((group) => (
+            <div key={group.sector?.id ?? "unassigned"}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-caption font-semibold uppercase tracking-wide text-(--content-secondary)">
+                  {group.sector?.name ?? "Unassigned"}
+                </h3>
+                {group.sector && (
+                  <button
+                    type="button"
+                    onClick={() => deleteSectorMutation.mutate(group.sector!.id)}
+                    className="text-caption text-(--content-secondary)"
+                  >
+                    Remove sector
+                  </button>
+                )}
+              </div>
+              <div className="mt-1.5 flex flex-col gap-2">
+                {group.appliances.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col">
+                      <span className="text-body font-medium text-(--content-primary)">{a.callsign}</span>
+                      {a.locationUpdatedAtUtc && (
+                        <span className="text-caption text-(--content-secondary)">
+                          Last seen {new Date(a.locationUpdatedAtUtc).toLocaleTimeString()}
+                        </span>
+                      )}
+                      <ApplianceOfficerControl incidentId={incident.id} appliance={a} employees={employees} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={a.resourceKind}
+                        onChange={(e) => setResourceKindMutation.mutate({ applianceId: a.id, resourceKind: e.target.value as ResourceKind })}
+                        className="rounded-lg border border-(--surface-border) px-2 py-1 text-caption"
+                      >
+                        {(Object.keys(RESOURCE_KIND_LABELS) as ResourceKind[]).map((k) => (
+                          <option key={k} value={k}>{RESOURCE_KIND_LABELS[k]}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={a.sectorId ?? ""}
+                        onChange={(e) => assignSectorMutation.mutate({ applianceId: a.id, sectorId: e.target.value || null })}
+                        className="rounded-lg border border-(--surface-border) px-2 py-1 text-caption"
+                      >
+                        <option value="">Unassigned</option>
+                        {incident.sectors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                      <span className={`rounded-full px-2 py-0.5 text-caption font-semibold ${APPLIANCE_STATUS_STYLES[a.status]}`}>
+                        {a.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
+          {incident.appliances.length > 0 && (
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newSectorName.trim()) addSectorMutation.mutate(newSectorName.trim());
+              }}
+            >
+              <input
+                value={newSectorName}
+                onChange={(e) => setNewSectorName(e.target.value)}
+                placeholder="New sector name"
+                className="flex-1 rounded-lg border border-(--surface-border) px-2 py-1 text-body"
+              />
+              <button
+                type="submit"
+                disabled={addSectorMutation.isPending}
+                className="text-body text-brand-primary disabled:opacity-60"
+              >
+                + Add sector
+              </button>
+            </form>
+          )}
         </div>
       )}
 
@@ -131,6 +266,13 @@ type TimelineEntry = {
   text: string;
   caption: string;
   timestamp: string;
+  // Only General/Hazard updates are ever acknowledgeable -- a
+  // ResourceChange line is a status log entry, not something anyone needs
+  // to confirm they've seen, and "created"/"closed" are synthesized
+  // client-side (no backend row to acknowledge in the first place).
+  acknowledgeable: boolean;
+  acknowledgedAtUtc: string | null;
+  acknowledgedByName: string | null;
 };
 
 // "created" deliberately isn't brand-secondary (#0B1F3A) -- that's a
@@ -158,7 +300,10 @@ function updateKind(updateType: IncidentUpdateType): TimelineEntry["kind"] {
 
 function buildTimeline(incident: IncidentDto): TimelineEntry[] {
   const entries: TimelineEntry[] = [
-    { id: "created", kind: "created", text: `Incident created: ${incident.incidentType}`, caption: incident.orgUnitName, timestamp: incident.startedAtUtc },
+    {
+      id: "created", kind: "created", text: `Incident created: ${incident.incidentType}`, caption: incident.orgUnitName,
+      timestamp: incident.startedAtUtc, acknowledgeable: false, acknowledgedAtUtc: null, acknowledgedByName: null,
+    },
     ...incident.updates.map((u): TimelineEntry => ({
       id: u.id,
       kind: updateKind(u.updateType),
@@ -171,10 +316,16 @@ function buildTimeline(incident: IncidentDto): TimelineEntry[] {
       // generic per-source label.
       caption: u.updateType === "Hazard" ? "HAZARD" : (u.authorName ?? (u.source === "Crew" ? "Crew" : "Control Room")),
       timestamp: u.createdAtUtc,
+      acknowledgeable: u.updateType === "General" || u.updateType === "Hazard",
+      acknowledgedAtUtc: u.acknowledgedAtUtc,
+      acknowledgedByName: u.acknowledgedByName,
     })),
   ];
   if (incident.closedAtUtc) {
-    entries.push({ id: "closed", kind: "closed", text: "Incident closed", caption: incident.status, timestamp: incident.closedAtUtc });
+    entries.push({
+      id: "closed", kind: "closed", text: "Incident closed", caption: incident.status, timestamp: incident.closedAtUtc,
+      acknowledgeable: false, acknowledgedAtUtc: null, acknowledgedByName: null,
+    });
   }
   // Oldest first, top to bottom -- reads as the incident's own story in
   // order, which is the point for a commander picking it up mid-way
@@ -186,6 +337,11 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
+  // Same cache key RootLayout's account block already queries -- shares
+  // that result rather than firing a second /me request just to attribute
+  // an acknowledgement to the logged-in operator's own name.
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
+
   const addUpdateMutation = useMutation({
     mutationFn: (request: AddIncidentUpdateRequest) =>
       apiFetch<IncidentDto>(`/incidents/${incident.id}/updates`, { method: "POST", body: JSON.stringify(request) }),
@@ -193,6 +349,16 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
       queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
       showToast("Update added");
     },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const acknowledgeMutation = useMutation({
+    mutationFn: (updateId: string) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/updates/${updateId}/acknowledge`, {
+        method: "POST",
+        body: JSON.stringify({ acknowledgedByName: meQuery.data?.displayName ?? null }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["incident", incident.id] }),
     onError: (error) => showToast(error.message, "error"),
   });
 
@@ -249,6 +415,22 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
                 <span>{new Date(entry.timestamp).toLocaleString()}</span>
               </div>
               <p className="mt-0.5 text-body text-(--content-primary)">{entry.text}</p>
+              {entry.acknowledgeable && (
+                entry.acknowledgedAtUtc ? (
+                  <p className="mt-1 text-caption text-(--content-secondary)">
+                    Acknowledged by {entry.acknowledgedByName} at {new Date(entry.acknowledgedAtUtc).toLocaleTimeString()}
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={acknowledgeMutation.isPending}
+                    onClick={() => acknowledgeMutation.mutate(entry.id)}
+                    className="mt-1 text-caption font-semibold text-brand-primary disabled:opacity-60"
+                  >
+                    Acknowledge
+                  </button>
+                )
+              )}
             </div>
           </div>
         ))}

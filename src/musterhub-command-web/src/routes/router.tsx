@@ -2,6 +2,7 @@ import { createBrowserRouter, redirect } from "react-router-dom";
 import { RootLayout } from "./RootLayout";
 import { IncidentsListPage } from "./IncidentsListPage";
 import { IncidentDetailPage } from "./IncidentDetailPage";
+import { IncidentHierarchyPage } from "./IncidentHierarchyPage";
 import { SetupPage } from "./SetupPage";
 import { SessionExpiredPage } from "./SessionExpiredPage";
 import { resolveAccessToken } from "../auth/tokenStore";
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <IncidentsListPage /> },
       { path: "incidents/:id", element: <IncidentDetailPage /> },
+      { path: "incidents/:id/hierarchy", element: <IncidentHierarchyPage /> },
       { path: "setup", element: <SetupPage /> },
     ],
   },
