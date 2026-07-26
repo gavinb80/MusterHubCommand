@@ -16,6 +16,8 @@ export function ApplianceOfficerControl({ incidentId, appliance, employees }: {
   employees: EmployeeDto[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [employeeId, setEmployeeId] = useState<string | null>(appliance.officerInChargeEmployeeId);
+  const [name, setName] = useState<string | null>(appliance.officerInChargeName);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -26,22 +28,41 @@ export function ApplianceOfficerControl({ incidentId, appliance, employees }: {
     onError: (error) => showToast(error.message, "error"),
   });
 
+  const startEditing = () => {
+    setEmployeeId(appliance.officerInChargeEmployeeId);
+    setName(appliance.officerInChargeName);
+    setEditing(true);
+  };
+
   if (editing) {
     return (
-      <div className="mt-1 w-48">
+      <div className="mt-1 flex w-48 flex-col gap-1">
         <PersonPicker
           employees={employees}
-          employeeId={appliance.officerInChargeEmployeeId}
-          name={appliance.officerInChargeName}
+          employeeId={employeeId}
+          name={name}
           placeholder="Officer in charge..."
-          onChange={(employeeId, name) => mutation.mutate({ officerInChargeEmployeeId: employeeId, officerInChargeName: name })}
+          onChange={(newEmployeeId, newName) => { setEmployeeId(newEmployeeId); setName(newName); }}
         />
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setEditing(false)} className="text-caption text-(--content-secondary)">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate({ officerInChargeEmployeeId: employeeId, officerInChargeName: name })}
+            className="text-caption font-semibold text-brand-primary disabled:opacity-60"
+          >
+            Save
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <button type="button" onClick={() => setEditing(true)} className="text-caption text-(--content-secondary)">
+    <button type="button" onClick={startEditing} className="text-caption text-(--content-secondary)">
       {appliance.officerInChargeName ? `Officer: ${appliance.officerInChargeName}` : "+ Assign officer"}
     </button>
   );

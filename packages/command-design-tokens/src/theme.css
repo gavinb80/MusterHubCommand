@@ -42,6 +42,25 @@
   --content-secondary: #8B97A8;
 }
 
+/* Printing/"Save as PDF" always renders on white paper regardless of the
+   viewer's OS/app theme -- Chrome's print path also skips background
+   colours by default (no "Background graphics" option), so dark-theme
+   near-white text on a skipped-dark background becomes near-invisible
+   text on the actual white page. Same selector list as the blocks above,
+   placed last so this wins under print for every theme state. */
+@media print {
+  :root,
+  :root[data-theme="light"],
+  :root[data-theme="dark"] {
+    --surface-page: #F5F6FA;
+    --surface: #FFFFFF;
+    --surface-alt: #EEF1F6;
+    --surface-border: #E3E7ED;
+    --content-primary: #15202B;
+    --content-secondary: #67727E;
+  }
+}
+
 @theme {
   --color-brand-primary: #C8102E;
   --color-brand-primary-dark: #FF3B30;

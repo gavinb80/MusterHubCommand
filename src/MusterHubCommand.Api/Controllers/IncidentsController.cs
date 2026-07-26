@@ -57,7 +57,13 @@ public class IncidentsController(
     [HttpPatch("{id}")]
     public async Task<ActionResult<IncidentDto>> Update(Guid id, UpdateIncidentRequest request)
     {
-        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        // Closing is elevated (same tier as Cancel below); any other field
+        // on this same generic PATCH -- description, address, etc. -- is
+        // still just baseline operator access.
+        var denied = request.Status == IncidentStatus.Closed
+            ? await RequireIncidentCommanderAsync()
+            : await RequireOperatorAsync();
+        if (denied is ActionResult result) return result;
 
         try
         {
@@ -70,7 +76,7 @@ public class IncidentsController(
     [HttpDelete("{id}")]
     public async Task<IActionResult> Cancel(Guid id)
     {
-        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
 
         var updated = await incidentService.CancelAsync(OrganisationId, id);
         return updated is null ? NotFound() : NoContent();
@@ -88,7 +94,7 @@ public class IncidentsController(
     [HttpPost("{id}/sectors")]
     public async Task<ActionResult<IncidentDto>> AddSector(Guid id, AddSectorRequest request)
     {
-        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
         if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("Sector name is required.");
 
         try
@@ -104,7 +110,7 @@ public class IncidentsController(
     [HttpPatch("{id}/sectors/{sectorId}")]
     public async Task<ActionResult<IncidentDto>> UpdateSector(Guid id, Guid sectorId, UpdateSectorRequest request)
     {
-        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
         if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("Sector name is required.");
 
         try
@@ -120,7 +126,7 @@ public class IncidentsController(
     [HttpDelete("{id}/sectors/{sectorId}")]
     public async Task<ActionResult<IncidentDto>> DeleteSector(Guid id, Guid sectorId)
     {
-        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
 
         var updated = await incidentService.DeleteSectorAsync(OrganisationId, id, sectorId);
         return updated is null ? NotFound() : Ok(updated.ToDto());

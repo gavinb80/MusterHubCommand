@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import type {
-  CreateDeviceResponse, CreateIntegrationApiKeyResponse, DeviceDto, EmployeeDto,
-  IntegrationApiKeyDto, OrganisationSettingsDto, OrgUnitDto, SaveVehicleProfileRequest, VehicleProfileDto,
+  CommandOperatorTier, CreateDeviceResponse, CreateIntegrationApiKeyResponse, DeviceDto, EmployeeDto,
+  IntegrationApiKeyDto, MeResponse, OrganisationSettingsDto, OrgUnitDto, SaveVehicleProfileRequest, VehicleProfileDto,
 } from "../api/types";
 
 const TABS = ["Stations", "Devices", "Vehicle profiles", "Integration keys", "Operators", "General"] as const;
@@ -366,10 +366,14 @@ function OperatorsTab() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => apiFetch<EmployeeDto[]>("/employees") });
+  // Same cache key every other page's account block/gating already
+  // queries -- shares that result rather than firing a second /me request.
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
+  const canManage = meQuery.data?.isIncidentCommander ?? false;
 
   const setOperatorMutation = useMutation({
-    mutationFn: ({ id, isOperator }: { id: string; isOperator: boolean }) =>
-      apiFetch<void>(`/employees/${id}/operator`, { method: "PUT", body: JSON.stringify(isOperator) }),
+    mutationFn: ({ id, tier }: { id: string; tier: CommandOperatorTier | null }) =>
+      apiFetch<void>(`/employees/${id}/operator`, { method: "PUT", body: JSON.stringify({ tier }) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["employees"] }),
     onError: (error) => showToast(error.message, "error"),
   });
@@ -377,18 +381,27 @@ function OperatorsTab() {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-body text-(--content-secondary)">
-        Control Room Operators can create/edit incidents, push updates, and manage devices and integration keys.
+        Control Room and Command Support both create/edit incidents, push updates, and manage devices and
+        integration keys. Incident Commander adds closing/cancelling incidents, managing sectors and hierarchy, and
+        granting/revoking operators.
+        {!canManage && " Only an Incident Commander can change these."}
       </p>
       {employeesQuery.data?.map((e) => (
         <div key={e.id} className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-3">
           <span className="text-body text-(--content-primary)">{e.displayName}</span>
           <label className="flex items-center gap-2 text-body text-(--content-secondary)">
-            Operator
-            <input
-              type="checkbox"
-              checked={e.isOperator}
-              onChange={(ev) => setOperatorMutation.mutate({ id: e.id, isOperator: ev.target.checked })}
-            />
+            Operator tier
+            <select
+              disabled={!canManage}
+              value={e.operatorTier ?? ""}
+              onChange={(ev) => setOperatorMutation.mutate({ id: e.id, tier: (ev.target.value || null) as CommandOperatorTier | null })}
+              className="rounded-lg border border-(--surface-border) px-2 py-1 text-body text-(--content-primary) disabled:opacity-60"
+            >
+              <option value="">Not an operator</option>
+              <option value="ControlRoom">Control Room</option>
+              <option value="CommandSupport">Command Support</option>
+              <option value="IncidentCommander">Incident Commander</option>
+            </select>
           </label>
         </div>
       ))}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../auth/apiClient";
+import { getStoredToken } from "../auth/tokenStore";
 import { useToast } from "../components/ToastProvider";
 import { IncidentMap } from "../components/IncidentMap";
 import { LocationPicker } from "../components/LocationPicker";
@@ -37,6 +38,8 @@ function AttendancePanel({ incident }: { incident: IncidentDto }) {
   const { showToast } = useToast();
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => apiFetch<EmployeeDto[]>("/employees") });
   const employees = employeesQuery.data ?? [];
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
+  const canManageSectors = meQuery.data?.isIncidentCommander ?? false;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
 
@@ -134,7 +137,7 @@ function AttendancePanel({ incident }: { incident: IncidentDto }) {
                 <h3 className="text-caption font-semibold uppercase tracking-wide text-(--content-secondary)">
                   {group.sector?.name ?? "Unassigned"}
                 </h3>
-                {group.sector && (
+                {group.sector && canManageSectors && (
                   <button
                     type="button"
                     onClick={() => deleteSectorMutation.mutate(group.sector!.id)}
@@ -183,7 +186,7 @@ function AttendancePanel({ incident }: { incident: IncidentDto }) {
               </div>
             </div>
           ))}
-          {incident.appliances.length > 0 && (
+          {incident.appliances.length > 0 && canManageSectors && (
             <form
               className="flex gap-2"
               onSubmit={(e) => {
@@ -343,14 +346,37 @@ function buildTimeline(incident: IncidentDto): TimelineEntry[] {
   // Oldest first, top to bottom -- reads as the incident's own story in
   // order, which is the point for a commander picking it up mid-way
   // through (handover, sectorisation) rather than scanning for the latest.
+  // TimelinePanel offers a toggle for anyone who'd rather scan newest-first.
   return entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 }
+
+// "created"/"closed" are structural bookends, not an event type someone
+// would want to filter away -- they stay visible regardless of which
+// filter chips are active.
+const FILTERABLE_KINDS: TimelineEntry["kind"][] = ["general", "hazard", "resourceChange", "actionChange", "note"];
+const TIMELINE_FILTER_LABELS: Record<(typeof FILTERABLE_KINDS)[number], string> = {
+  general: "General",
+  hazard: "Hazard",
+  resourceChange: "Resource",
+  actionChange: "Task",
+  note: "Note",
+};
 
 function TimelinePanel({ incident }: { incident: IncidentDto }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [newestFirst, setNewestFirst] = useState(false);
+  const [activeKinds, setActiveKinds] = useState<Set<(typeof FILTERABLE_KINDS)[number]>>(new Set(FILTERABLE_KINDS));
+
+  const toggleKind = (kind: (typeof FILTERABLE_KINDS)[number]) => {
+    setActiveKinds((prev) => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind); else next.add(kind);
+      return next;
+    });
+  };
 
   // Same cache key RootLayout's account block already queries -- shares
   // that result rather than firing a second /me request just to attribute
@@ -391,12 +417,57 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
   const timeline = buildTimeline(incident);
   // Replies stay in the same flat chronological list rather than a
   // separate thread view -- this just resolves what a reply's own quoted
-  // preview should say.
+  // preview should say. Built from the unfiltered/unreordered timeline so a
+  // reply still resolves correctly even if its parent is filtered out or
+  // the list is showing newest-first.
   const entryById = new Map(timeline.map((entry) => [entry.updateId, entry]));
+
+  const visibleTimeline = timeline.filter(
+    (entry) => entry.kind === "created" || entry.kind === "closed" || activeKinds.has(entry.kind),
+  );
+  const orderedTimeline = newestFirst ? [...visibleTimeline].reverse() : visibleTimeline;
 
   return (
     <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
-      <h2 className="text-card-title font-semibold text-(--content-primary)">Timeline</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-card-title font-semibold text-(--content-primary)">Timeline</h2>
+        <div className="flex items-center rounded-lg border border-(--surface-border) text-caption">
+          <button
+            type="button"
+            onClick={() => setNewestFirst(false)}
+            className={`rounded-l-lg px-2 py-1 font-medium ${!newestFirst ? "bg-brand-primary text-white" : "text-(--content-secondary)"}`}
+          >
+            Oldest first
+          </button>
+          <button
+            type="button"
+            onClick={() => setNewestFirst(true)}
+            className={`rounded-r-lg px-2 py-1 font-medium ${newestFirst ? "bg-brand-primary text-white" : "text-(--content-secondary)"}`}
+          >
+            Newest first
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {FILTERABLE_KINDS.map((kind) => {
+          const active = activeKinds.has(kind);
+          return (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => toggleKind(kind)}
+              className={`rounded-full border px-2.5 py-0.5 text-caption font-medium ${
+                active
+                  ? "border-brand-primary bg-brand-primary/10 text-brand-primary"
+                  : "border-(--surface-border) text-(--content-secondary)"
+              }`}
+            >
+              {TIMELINE_FILTER_LABELS[kind]}
+            </button>
+          );
+        })}
+      </div>
 
       <form
         className="mt-3 flex flex-col gap-2"
@@ -436,7 +507,7 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
           cards. */}
       <div className="relative mt-4 flex flex-col gap-4">
         <div className="absolute top-1 bottom-1 left-[5px] w-px bg-(--surface-border)" aria-hidden="true" />
-        {timeline.map((entry) => (
+        {orderedTimeline.map((entry) => (
           <div key={entry.id} className="relative flex gap-3 pl-6">
             <span className={`absolute top-1 left-0 h-2.5 w-2.5 rounded-full ring-2 ring-(--surface) ${TIMELINE_DOT_STYLES[entry.kind]}`} />
             <div className="flex-1">
@@ -966,6 +1037,8 @@ export function IncidentDetailPage() {
     queryFn: () => apiFetch<IncidentDto>(`/incidents/${id}`),
     refetchInterval: 20_000,
   });
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
+  const canManageIncident = meQuery.data?.isIncidentCommander ?? false;
 
   const statusMutation = useMutation({
     mutationFn: (status: "Open" | "Closed") =>
@@ -1008,7 +1081,18 @@ export function IncidentDetailPage() {
           {incident.description && <p className="mt-2 text-body text-(--content-primary)">{incident.description}</p>}
         </div>
         <div className="flex gap-2">
-          {incident.status === "Open" && (
+          <Link
+            // The print page opens in a new tab, which gets its own empty
+            // sessionStorage -- carry the access token in the URL hash so
+            // that tab's own resolveAccessToken() can pick it up, same
+            // mechanism core's own handoff into Command already uses.
+            to={`/incidents/${incident.id}/print#token=${getStoredToken() ?? ""}`}
+            target="_blank"
+            className="rounded-lg border border-(--surface-border) px-3 py-1.5 text-body text-(--content-primary)"
+          >
+            Export
+          </Link>
+          {incident.status === "Open" && canManageIncident && (
             <button
               type="button"
               onClick={() => statusMutation.mutate("Closed")}
@@ -1026,7 +1110,7 @@ export function IncidentDetailPage() {
               Reopen
             </button>
           )}
-          {incident.status !== "Cancelled" && (
+          {incident.status !== "Cancelled" && canManageIncident && (
             <button
               type="button"
               onClick={() => {

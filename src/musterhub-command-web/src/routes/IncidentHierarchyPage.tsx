@@ -7,7 +7,7 @@ import { PersonPicker } from "../components/PersonPicker";
 import { ApplianceOfficerControl } from "../components/ApplianceOfficerControl";
 import type {
   AddSectorRequest, ApplianceStatus, EmployeeDto, IncidentApplianceDto, IncidentDto,
-  IncidentSectorDto, UpdateSectorRequest,
+  IncidentSectorDto, MeResponse, UpdateSectorRequest,
 } from "../api/types";
 
 const APPLIANCE_STATUS_STYLES: Record<ApplianceStatus, string> = {
@@ -98,13 +98,14 @@ function NodeEditor({ incident, node, defaultParentId, employees, onDone }: {
   );
 }
 
-function TreeNode({ incident, node, childrenByParent, appliancesByNode, depth, employees }: {
+function TreeNode({ incident, node, childrenByParent, appliancesByNode, depth, employees, canManage }: {
   incident: IncidentDto;
   node: IncidentSectorDto;
   childrenByParent: Map<string | null, IncidentSectorDto[]>;
   appliancesByNode: Map<string, IncidentApplianceDto[]>;
   depth: number;
   employees: EmployeeDto[];
+  canManage: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
@@ -136,9 +137,9 @@ function TreeNode({ incident, node, childrenByParent, appliancesByNode, depth, e
               <p className="text-caption text-(--content-secondary)">Person in charge: {node.personInChargeName}</p>
             )}
             {appliances.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-3">
+              <div className="mt-1 flex flex-wrap gap-2">
                 {appliances.map((a) => (
-                  <div key={a.id} className="flex flex-col gap-0.5">
+                  <div key={a.id} className="flex flex-col gap-0.5 rounded-lg border border-(--surface-border) px-2 py-1.5">
                     <span className="inline-flex items-center gap-1 text-caption">
                       <span className="font-medium text-(--content-primary)">{a.callsign}</span>
                       <span className={`rounded-full px-2 py-0.5 font-semibold ${APPLIANCE_STATUS_STYLES[a.status]}`}>{a.status}</span>
@@ -149,21 +150,23 @@ function TreeNode({ incident, node, childrenByParent, appliancesByNode, depth, e
               </div>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-2 text-caption">
-            <button type="button" onClick={() => setAddingChild(true)} className="text-brand-primary">+ Add child</button>
-            <button type="button" onClick={() => setEditing(true)} className="text-(--content-secondary)">Edit</button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm(`Remove "${node.name}"? Any nodes beneath it go too -- attached appliances just become Unassigned.`)) {
-                  deleteMutation.mutate();
-                }
-              }}
-              className="text-status-hazard"
-            >
-              Remove
-            </button>
-          </div>
+          {canManage && (
+            <div className="flex shrink-0 items-center gap-2 text-caption">
+              <button type="button" onClick={() => setAddingChild(true)} className="text-brand-primary">+ Add child</button>
+              <button type="button" onClick={() => setEditing(true)} className="text-(--content-secondary)">Edit</button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Remove "${node.name}"? Any nodes beneath it go too -- attached appliances just become Unassigned.`)) {
+                    deleteMutation.mutate();
+                  }
+                }}
+                className="text-status-hazard"
+              >
+                Remove
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -190,6 +193,7 @@ function TreeNode({ incident, node, childrenByParent, appliancesByNode, depth, e
               appliancesByNode={appliancesByNode}
               depth={depth + 1}
               employees={employees}
+              canManage={canManage}
             />
           ))}
         </div>
@@ -208,9 +212,11 @@ export function IncidentHierarchyPage() {
     refetchInterval: 20_000,
   });
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => apiFetch<EmployeeDto[]>("/employees") });
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
 
   const incident = incidentQuery.data;
   const employees = employeesQuery.data ?? [];
+  const canManage = meQuery.data?.isIncidentCommander ?? false;
 
   const { roots, childrenByParent, appliancesByNode } = useMemo(() => {
     const childrenByParent = new Map<string | null, IncidentSectorDto[]>();
@@ -257,16 +263,17 @@ export function IncidentHierarchyPage() {
             appliancesByNode={appliancesByNode}
             depth={0}
             employees={employees}
+            canManage={canManage}
           />
         ))}
 
-        {addingRoot ? (
+        {canManage && (addingRoot ? (
           <NodeEditor incident={incident} node={null} employees={employees} onDone={() => setAddingRoot(false)} />
         ) : (
           <button type="button" onClick={() => setAddingRoot(true)} className="self-start text-body text-brand-primary">
             + Add top-level node
           </button>
-        )}
+        ))}
       </div>
     </div>
   );

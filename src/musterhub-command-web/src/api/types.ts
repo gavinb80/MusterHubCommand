@@ -3,12 +3,16 @@
 // strings on the wire (Program.cs registers a global JsonStringEnumConverter),
 // not the ordinal ints Rota/Skills' own DTOs use.
 
+export type CommandOperatorTier = "ControlRoom" | "CommandSupport" | "IncidentCommander";
+
 export interface MeResponse {
   organisationId: string;
   employeeId: string | null;
   displayName: string | null;
   isOperator: boolean;
   isBootstrapping: boolean;
+  operatorTier: CommandOperatorTier | null;
+  isIncidentCommander: boolean;
 }
 
 export interface OrgUnitDto {
@@ -23,7 +27,7 @@ export interface EmployeeDto {
   id: string;
   displayName: string;
   employeeNumber: string | null;
-  isOperator: boolean;
+  operatorTier: CommandOperatorTier | null;
 }
 
 export type IncidentStatus = "Open" | "Closed" | "Cancelled";

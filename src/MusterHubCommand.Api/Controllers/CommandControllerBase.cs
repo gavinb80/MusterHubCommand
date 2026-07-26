@@ -39,5 +39,20 @@ public abstract class CommandControllerBase(
         return null;
     }
 
+    // Same idiom, for actions elevated above baseline operator access
+    // (closing/cancelling incidents, sector/hierarchy CRUD, granting
+    // operators) -- see CommandOperatorTier.
+    protected async Task<ActionResult?> RequireIncidentCommanderAsync()
+    {
+        if (await operatorChecker.IsBootstrappingAsync()) return null;
+
+        var employeeId = await currentEmployeeAccessor.GetEmployeeIdAsync();
+        if (employeeId is null) return Forbid();
+
+        if (!await operatorChecker.IsIncidentCommanderAsync(employeeId.Value)) return Forbid();
+
+        return null;
+    }
+
     protected async Task<Guid?> CurrentEmployeeIdAsync() => await currentEmployeeAccessor.GetEmployeeIdAsync();
 }

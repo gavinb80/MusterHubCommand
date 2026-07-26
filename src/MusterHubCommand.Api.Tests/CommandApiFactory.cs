@@ -119,9 +119,19 @@ public static class Seed
     public static readonly Guid OrgA = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
     public static readonly Guid OrgB = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000001");
 
+    // "OperatorAPerson" is an Incident Commander -- the elevated tier --
+    // since every pre-existing test written before the tier split assumes
+    // "the operator" can do everything (close/cancel, sector CRUD, grant
+    // others), matching exactly what the migration backfills real
+    // pre-existing grants to. CommandSupportAPerson/ControlRoomAPerson are
+    // the two baseline tiers (same permissions, distinct named roles), for
+    // tests that specifically assert the elevated-only actions are denied
+    // to them.
     public static readonly Guid OperatorAPerson = Guid.Parse("aaaaaaaa-1111-0000-0000-000000000001");
     public static readonly Guid CrewAPerson = Guid.Parse("aaaaaaaa-1111-0000-0000-000000000002");
     public static readonly Guid UnassignedAPerson = Guid.Parse("aaaaaaaa-1111-0000-0000-000000000003");
+    public static readonly Guid CommandSupportAPerson = Guid.Parse("aaaaaaaa-1111-0000-0000-000000000004");
+    public static readonly Guid ControlRoomAPerson = Guid.Parse("aaaaaaaa-1111-0000-0000-000000000005");
     public static readonly Guid OperatorBPerson = Guid.Parse("bbbbbbbb-1111-0000-0000-000000000001");
 
     public static readonly Guid GroupTypeA = Guid.Parse("aaaaaaaa-2222-0000-0000-000000000001");
@@ -138,6 +148,8 @@ public static class Seed
     public static readonly Guid OperatorAEmployee = Guid.Parse("aaaaaaaa-4444-0000-0000-000000000001");
     public static readonly Guid CrewAEmployee = Guid.Parse("aaaaaaaa-4444-0000-0000-000000000002");
     public static readonly Guid UnassignedAEmployee = Guid.Parse("aaaaaaaa-4444-0000-0000-000000000003");
+    public static readonly Guid CommandSupportAEmployee = Guid.Parse("aaaaaaaa-4444-0000-0000-000000000004");
+    public static readonly Guid ControlRoomAEmployee = Guid.Parse("aaaaaaaa-4444-0000-0000-000000000005");
     public static readonly Guid OperatorBEmployee = Guid.Parse("bbbbbbbb-4444-0000-0000-000000000001");
 
     public static readonly Guid IncidentA = Guid.Parse("aaaaaaaa-5555-0000-0000-000000000001");
@@ -172,10 +184,14 @@ public static class Seed
             new Employee { Id = OperatorAEmployee, OrganisationId = OrgA, PersonId = OperatorAPerson, DisplayName = "Operator A" },
             new Employee { Id = CrewAEmployee, OrganisationId = OrgA, PersonId = CrewAPerson, DisplayName = "Crew A" },
             new Employee { Id = UnassignedAEmployee, OrganisationId = OrgA, PersonId = UnassignedAPerson, DisplayName = "Unassigned A" },
+            new Employee { Id = CommandSupportAEmployee, OrganisationId = OrgA, PersonId = CommandSupportAPerson, DisplayName = "Command Support A" },
+            new Employee { Id = ControlRoomAEmployee, OrganisationId = OrgA, PersonId = ControlRoomAPerson, DisplayName = "Control Room A" },
             new Employee { Id = OperatorBEmployee, OrganisationId = OrgB, PersonId = OperatorBPerson, DisplayName = "Operator B" });
 
-        db.CommandOperators.Add(new CommandOperator { OrganisationId = OrgA, EmployeeId = OperatorAEmployee });
-        db.CommandOperators.Add(new CommandOperator { OrganisationId = OrgB, EmployeeId = OperatorBEmployee });
+        db.CommandOperators.Add(new CommandOperator { OrganisationId = OrgA, EmployeeId = OperatorAEmployee, Tier = CommandOperatorTier.IncidentCommander });
+        db.CommandOperators.Add(new CommandOperator { OrganisationId = OrgA, EmployeeId = CommandSupportAEmployee, Tier = CommandOperatorTier.CommandSupport });
+        db.CommandOperators.Add(new CommandOperator { OrganisationId = OrgA, EmployeeId = ControlRoomAEmployee, Tier = CommandOperatorTier.ControlRoom });
+        db.CommandOperators.Add(new CommandOperator { OrganisationId = OrgB, EmployeeId = OperatorBEmployee, Tier = CommandOperatorTier.IncidentCommander });
 
         db.EmployeeStationAssignments.AddRange(
             new EmployeeStationAssignment { OrganisationId = OrgA, EmployeeId = OperatorAEmployee, OrgUnitId = StationA, IsHome = true },

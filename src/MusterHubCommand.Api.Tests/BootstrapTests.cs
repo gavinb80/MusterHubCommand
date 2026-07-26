@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using MusterHubCommand.Api.Contracts;
+using MusterHubCommand.Api.Data.Entities;
 using MusterHubCommand.Api.Services;
 
 namespace MusterHubCommand.Api.Tests;
@@ -53,8 +54,10 @@ public class BootstrapTests(CommandApiFactory factory)
         var founderEmployeeId = meAfterImport.GetProperty("employeeId").GetGuid();
         Assert.True(meAfterImport.GetProperty("isBootstrapping").GetBoolean()); // still open -- no grant yet
 
-        // The founder grants themselves Operator -- this closes the window.
-        var grant = await founder.PutAsJsonAsync($"/api/employees/{founderEmployeeId}/operator", true);
+        // The founder grants themselves Incident Commander -- this closes
+        // the window. (Bootstrapping treats them as a Commander already, so
+        // this self-grant is itself allowed by the same escape hatch.)
+        var grant = await founder.PutAsJsonAsync($"/api/employees/{founderEmployeeId}/operator", new SetOperatorRequest(CommandOperatorTier.IncidentCommander));
         Assert.Equal(HttpStatusCode.NoContent, grant.StatusCode);
 
         var meAfterGrant = await (await founder.GetAsync("/api/me")).Content.ReadFromJsonAsync<JsonElement>();
