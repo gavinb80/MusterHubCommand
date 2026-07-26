@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="MusterHubCommandTablet.Views.IncidentDetailPage"
+    x:Name="PageRoot"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
@@ -16,7 +17,9 @@
 
             <HorizontalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="16,0,0,0" Spacing="12">
                 <Label Text="{Binding Incident.IncidentType}" Style="{StaticResource PageTitleLabel}" VerticalOptions="Center" />
+                <Label Text="{Binding IncidentNumberLabel}" Style="{StaticResource CardSubtitleLabel}" VerticalOptions="Center" />
                 <Label Text="{Binding FormattedAddress}" Style="{StaticResource CardSubtitleLabel}" VerticalOptions="Center" />
+                <Label Text="{Binding StartedLabel}" Style="{StaticResource CardSubtitleLabel}" VerticalOptions="Center" />
             </HorizontalStackLayout>
 
             <Button Grid.Column="2" Text="{Binding MapToggleLabel}" Command="{Binding ToggleMapCommand}" Style="{StaticResource SecondaryButton}" VerticalOptions="Center" Margin="0,0,12,0" IsVisible="{Binding HasLocation}" HeightRequest="36" Padding="12,0" />
@@ -86,14 +89,32 @@
                 <!-- Attendance Card -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
-                        <Label Text="Attendance" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" />
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" Text="Attendance" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="View hierarchy" Command="{Binding ViewHierarchyCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                        </Grid>
                         <Label Text="No appliances attending yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Incident.Appliances, Converter={StaticResource CollectionEmptyConverter}}" />
-                        <CollectionView ItemsSource="{Binding Incident.Appliances}" SelectionMode="None">
+                        <!-- Sector-grouped, read-only. Creating sectors and
+                             assigning appliances stays a control-room action.
+                             See ApplianceGroups' own comment on the ViewModel. -->
+                        <CollectionView ItemsSource="{Binding ApplianceGroups}" IsGrouped="True" SelectionMode="None">
+                            <CollectionView.GroupHeaderTemplate>
+                                <DataTemplate x:DataType="vm:ApplianceGroup">
+                                    <Label Text="{Binding SectorName}" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" Margin="0,8,0,2" />
+                                </DataTemplate>
+                            </CollectionView.GroupHeaderTemplate>
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="models:IncidentApplianceDto">
                                     <Border Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="0,0,0,0" Padding="0,12">
                                         <Grid ColumnDefinitions="*,Auto">
-                                            <Label Grid.Column="0" Text="{Binding Callsign}" FontAttributes="Bold" VerticalOptions="Center" FontSize="16" />
+                                            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                                <HorizontalStackLayout Spacing="6">
+                                                    <Label Text="{Binding Callsign}" FontAttributes="Bold" VerticalOptions="Center" FontSize="16" />
+                                                    <Label Text="{Binding ResourceKind, Converter={StaticResource ResourceKindLabelConverter}}" Style="{StaticResource CaptionLabel}" VerticalOptions="Center" />
+                                                </HorizontalStackLayout>
+                                                <Label Text="{Binding LocationUpdatedAtUtc, StringFormat='Last seen {0:t}'}" IsVisible="{Binding LocationUpdatedAtUtc, Converter={StaticResource ObjectNotNullToBoolConverter}}" Style="{StaticResource CaptionLabel}" />
+                                                <Label Text="{Binding OfficerInChargeName, StringFormat='Officer: {0}'}" IsVisible="{Binding OfficerInChargeName, Converter={StaticResource StringNotEmptyToBoolConverter}}" Style="{StaticResource CaptionLabel}" />
+                                            </VerticalStackLayout>
                                             <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}">
                                                 <Label Text="{Binding Status}" Style="{StaticResource StatusPillLabel}" FontSize="14" />
                                             </Border>
@@ -130,6 +151,32 @@
                                             <Label Grid.Column="1" Text="{Binding Timestamp, StringFormat='{0:g}'}" Style="{StaticResource CaptionLabel}" FontSize="13" />
                                         </Grid>
                                         <Label Text="{Binding Text}" FontSize="15" />
+                                        <Label Style="{StaticResource CaptionLabel}" IsVisible="{Binding AcknowledgedAtUtc, Converter={StaticResource ObjectNotNullToBoolConverter}}">
+                                            <Label.Text>
+                                                <MultiBinding StringFormat="Acknowledged by {0} at {1:t}">
+                                                    <Binding Path="AcknowledgedByName" />
+                                                    <Binding Path="AcknowledgedAtUtc" />
+                                                </MultiBinding>
+                                            </Label.Text>
+                                        </Label>
+                                        <Button
+                                            Text="Acknowledge"
+                                            Command="{Binding BindingContext.AcknowledgeUpdateCommand, Source={x:Reference PageRoot}}"
+                                            CommandParameter="{Binding Id}"
+                                            Style="{StaticResource SecondaryButton}"
+                                            FontSize="13"
+                                            Padding="10,4"
+                                            HeightRequest="30"
+                                            HorizontalOptions="Start">
+                                            <Button.Triggers>
+                                                <DataTrigger TargetType="Button" Binding="{Binding Acknowledgeable}" Value="False">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Button" Binding="{Binding AcknowledgedAtUtc, Converter={StaticResource ObjectNotNullToBoolConverter}}" Value="True">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                            </Button.Triggers>
+                                        </Button>
                                     </VerticalStackLayout>
                                 </Grid>
                             </DataTemplate>

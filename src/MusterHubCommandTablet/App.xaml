@@ -14,6 +14,10 @@
             <converters:StringNotEmptyToBoolConverter x:Key="StringNotEmptyToBoolConverter" />
             <converters:TimelineKindToColorConverter x:Key="TimelineKindToColorConverter" />
             <converters:OnlineToColorConverter x:Key="OnlineToColorConverter" />
+            <converters:ResourceKindLabelConverter x:Key="ResourceKindLabelConverter" />
+            <converters:ObjectNotNullToBoolConverter x:Key="ObjectNotNullToBoolConverter" />
+            <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter" />
+            <converters:ExpandGlyphConverter x:Key="ExpandGlyphConverter" />
             <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
             <converters:CollectionEmptyConverter x:Key="CollectionEmptyConverter" />
         </ResourceDictionary>

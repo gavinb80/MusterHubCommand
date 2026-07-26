@@ -8,18 +8,26 @@ public record IncidentSummaryDto(
     Guid OrgUnitId, string OrgUnitName, string Status,
     DateTimeOffset StartedAtUtc, DateTimeOffset UpdatedAtUtc);
 
-public record IncidentApplianceDto(Guid Id, string Callsign, string Status, DateTimeOffset UpdatedAtUtc);
+public record IncidentApplianceDto(
+    Guid Id, string Callsign, string Status, string ResourceKind, Guid? SectorId,
+    Guid? OfficerInChargeEmployeeId, string? OfficerInChargeName,
+    double? Latitude, double? Longitude, DateTimeOffset? LocationUpdatedAtUtc, DateTimeOffset UpdatedAtUtc);
+
+public record IncidentSectorDto(
+    Guid Id, string Name, int SortOrder, Guid? ParentId,
+    Guid? PersonInChargeEmployeeId, string? PersonInChargeName);
 
 public record IncidentUpdateDto(
     Guid Id, string Source, string? AuthorName, Guid? AuthorEmployeeId,
-    string Text, string UpdateType, DateTimeOffset CreatedAtUtc);
+    string Text, string UpdateType,
+    DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName, DateTimeOffset CreatedAtUtc);
 
 public record IncidentDto(
     Guid Id, string ExternalReference, string IncidentType, string? Description,
     string? Address, double? Latitude, double? Longitude,
     Guid OrgUnitId, string OrgUnitName, string Status,
     DateTimeOffset StartedAtUtc, DateTimeOffset? ClosedAtUtc, DateTimeOffset UpdatedAtUtc,
-    List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates);
+    List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates, List<IncidentSectorDto> Sectors);
 
 public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId);
 

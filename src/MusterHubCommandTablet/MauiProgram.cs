@@ -39,6 +39,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<ActiveIncidentsPage>();
 		builder.Services.AddTransient<IncidentDetailViewModel>();
 		builder.Services.AddTransient<IncidentDetailPage>();
+		builder.Services.AddTransient<IncidentHierarchyViewModel>();
+		builder.Services.AddTransient<IncidentHierarchyPage>();
 		builder.Services.AddTransient<NavigateViewModel>();
 		builder.Services.AddTransient<NavigatePage>();
 

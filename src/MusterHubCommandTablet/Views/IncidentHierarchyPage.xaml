@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Name="PageRoot"
+    x:Class="MusterHubCommandTablet.Views.IncidentHierarchyPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
+    x:DataType="vm:IncidentHierarchyViewModel"
+    Shell.NavBarIsVisible="False"
+    Padding="20">
+
+    <Grid RowDefinitions="Auto, Auto, *" RowSpacing="16">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto, *">
+            <Button Grid.Column="0" Text="&#8592; Back" Style="{StaticResource SecondaryButton}" Command="{Binding GoBackCommand}" VerticalOptions="Center" />
+            <Label Grid.Column="1" Text="Incident Hierarchy" Style="{StaticResource PageTitleLabel}" VerticalOptions="Center" Margin="16,0,0,0" />
+        </Grid>
+
+        <Border
+            Grid.Row="1"
+            IsVisible="{Binding HasError}"
+            BackgroundColor="{StaticResource StatusHazard}"
+            StrokeThickness="0"
+            StrokeShape="RoundRectangle 10"
+            Padding="16,12">
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource White}" FontAttributes="Bold" />
+        </Border>
+
+        <Label
+            Grid.Row="2"
+            Text="No hierarchy set up for this incident yet."
+            Style="{StaticResource CardSubtitleLabel}"
+            IsVisible="{Binding HasNoHierarchy}"
+            HorizontalOptions="Center"
+            VerticalOptions="Start"
+            Margin="0,40,0,0" />
+
+        <!-- A real 2D tree layout, not an indented list: HierarchyLayout
+             computes an X/Y per node (and per appliance) so siblings sit
+             side by side with a forking connector line between them,
+             matching a standard org chart. The GraphicsView draws every
+             connector from Edges; the node/appliance boxes are ordinary
+             Border views placed via AbsoluteLayout.LayoutBounds (each
+             record's own computed LayoutBounds), both bound to the same
+             pixel coordinate space so a box's rendered position always
+             lines up with where its own connector lines terminate. -->
+        <ScrollView Grid.Row="2" Orientation="Both">
+            <Grid WidthRequest="{Binding CanvasWidth}" HeightRequest="{Binding CanvasHeight}">
+                <GraphicsView Drawable="{Binding EdgesDrawable}" WidthRequest="{Binding CanvasWidth}" HeightRequest="{Binding CanvasHeight}" />
+
+                <AbsoluteLayout WidthRequest="{Binding CanvasWidth}" HeightRequest="{Binding CanvasHeight}" BindableLayout.ItemsSource="{Binding Nodes}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PositionedNode">
+                            <Border
+                                Style="{StaticResource CardBorder}"
+                                Padding="12,8"
+                                AbsoluteLayout.LayoutFlags="None"
+                                AbsoluteLayout.LayoutBounds="{Binding LayoutBounds}">
+                                <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                                    <Grid ColumnDefinitions="Auto, *">
+                                        <!-- Opacity, not IsVisible, on the
+                                             chevron: keeps node names lined
+                                             up whether or not a box has
+                                             children. -->
+                                        <Label
+                                            Grid.Column="0"
+                                            Text="{Binding IsExpanded, Converter={StaticResource ExpandGlyphConverter}}"
+                                            FontSize="13"
+                                            WidthRequest="16"
+                                            HorizontalTextAlignment="Center"
+                                            VerticalOptions="Center"
+                                            Opacity="{Binding HasChildren, Converter={StaticResource BoolToOpacityConverter}}">
+                                            <Label.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding BindingContext.ToggleExpandCommand, Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding Node.Id}" />
+                                            </Label.GestureRecognizers>
+                                        </Label>
+                                        <Label Grid.Column="1" Text="{Binding Node.Name}" FontAttributes="Bold" FontSize="14" LineBreakMode="WordWrap" MaxLines="2" />
+                                    </Grid>
+                                    <Label
+                                        Text="{Binding Node.PersonInChargeName, StringFormat='Person in charge: {0}'}"
+                                        Style="{StaticResource CaptionLabel}"
+                                        FontSize="11"
+                                        LineBreakMode="WordWrap"
+                                        MaxLines="2"
+                                        IsVisible="{Binding Node.PersonInChargeName, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </AbsoluteLayout>
+
+                <AbsoluteLayout WidthRequest="{Binding CanvasWidth}" HeightRequest="{Binding CanvasHeight}" BindableLayout.ItemsSource="{Binding Appliances}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PositionedAppliance">
+                            <Border
+                                Style="{StaticResource CardBorder}"
+                                Padding="12,6"
+                                AbsoluteLayout.LayoutFlags="None"
+                                AbsoluteLayout.LayoutBounds="{Binding LayoutBounds}">
+                                <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+                                    <HorizontalStackLayout Spacing="4">
+                                        <Label Text="{Binding Appliance.Callsign}" FontAttributes="Bold" FontSize="13" VerticalOptions="Center" />
+                                        <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Appliance.Status, Converter={StaticResource StatusToColorConverter}}">
+                                            <Label Text="{Binding Appliance.Status}" Style="{StaticResource StatusPillLabel}" FontSize="11" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+                                    <Label
+                                        Text="{Binding Appliance.OfficerInChargeName, StringFormat='Officer: {0}'}"
+                                        Style="{StaticResource CaptionLabel}"
+                                        FontSize="11"
+                                        LineBreakMode="WordWrap"
+                                        MaxLines="2"
+                                        IsVisible="{Binding Appliance.OfficerInChargeName, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </AbsoluteLayout>
+            </Grid>
+        </ScrollView>
+    </Grid>
+</ContentPage>

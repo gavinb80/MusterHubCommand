@@ -13,7 +13,20 @@ namespace MusterHubCommandTablet.ViewModels;
 // mirror anything on the API, it's IncidentDetailViewModel's own merge of
 // Incident.StartedAtUtc/ClosedAtUtc with the real IncidentUpdateDto rows
 // into one bindable, chronological list (see BuildTimeline below).
-public record TimelineEntry(string Id, string Kind, string Text, string Caption, DateTimeOffset Timestamp);
+public record TimelineEntry(
+    string Id, string Kind, string Text, string Caption, DateTimeOffset Timestamp,
+    bool Acknowledgeable, DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName);
+
+// Read-only on the tablet -- crews see which sector each appliance is in,
+// but creating sectors and assigning appliances to them stays a
+// control-room action, same as attendance/status changes already are.
+// Plain List<T>-derived rather than a bindable collection: unlike Timeline,
+// this doesn't scroll independently, so a wholesale rebind on every poll
+// has no scroll-position to lose.
+public class ApplianceGroup(string sectorName, IEnumerable<IncidentApplianceDto> appliances) : List<IncidentApplianceDto>(appliances)
+{
+    public string SectorName { get; } = sectorName;
+}
 
 [QueryProperty(nameof(IncidentIdString), "id")]
 public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
@@ -47,6 +60,10 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     public string FormattedAddress => Incident?.Address?.TrimEnd(',', ' ') ?? string.Empty;
 
+    public string IncidentNumberLabel => Incident is null ? string.Empty : $"#{Incident.ExternalReference}";
+
+    public string StartedLabel => Incident is null ? string.Empty : $"Started {Incident.StartedAtUtc.ToLocalTime():d MMM HH:mm}";
+
     // Fixed instance, never reassigned -- SyncTimeline below updates it in
     // place. Confirmed live: rebinding a fresh List<TimelineEntry> to
     // ItemsSource on every 15s poll reset the CollectionView's scroll
@@ -55,6 +72,28 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     // ActiveIncidentsViewModel.SyncIncidents already applies to the
     // incident list, for the same reason.
     public ObservableCollection<TimelineEntry> Timeline { get; } = [];
+
+    // Sectors first in SortOrder, "Unassigned" last, empty groups dropped --
+    // same grouping the web console's own AttendancePanel does. Recomputed
+    // wholesale on every poll (see ApplianceGroup's own comment on why that's
+    // fine here unlike Timeline).
+    public List<ApplianceGroup> ApplianceGroups => BuildApplianceGroups();
+
+    private List<ApplianceGroup> BuildApplianceGroups()
+    {
+        if (Incident is null) return [];
+
+        var groups = Incident.Sectors
+            .OrderBy(s => s.SortOrder)
+            .Select(s => new ApplianceGroup(s.Name, Incident.Appliances.Where(a => a.SectorId == s.Id)))
+            .Where(g => g.Count > 0)
+            .ToList();
+
+        var unassigned = Incident.Appliances.Where(a => a.SectorId is null).ToList();
+        if (unassigned.Count > 0) groups.Add(new ApplianceGroup("Unassigned", unassigned));
+
+        return groups;
+    }
 
     // Reflects only whether the last poll actually succeeded -- not a
     // real-time connection state (this app polls, it doesn't hold a live
@@ -138,7 +177,8 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     {
         var entries = new List<TimelineEntry>
         {
-            new("created", "Created", $"Incident created: {incident.IncidentType}", incident.OrgUnitName, incident.StartedAtUtc),
+            new("created", "Created", $"Incident created: {incident.IncidentType}", incident.OrgUnitName, incident.StartedAtUtc,
+                Acknowledgeable: false, AcknowledgedAtUtc: null, AcknowledgedByName: null),
         };
         entries.AddRange(incident.Updates.Select(u => new TimelineEntry(
             u.Id.ToString(), u.UpdateType,
@@ -151,22 +191,38 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             // auto-logged with no note text of its own) falls back to the
             // generic per-source label.
             u.UpdateType == "Hazard" ? "HAZARD" : (u.AuthorName ?? (u.Source == "Crew" ? "Crew" : "Control Room")),
-            u.CreatedAtUtc)));
-        if (incident.ClosedAtUtc is { } closedAt) entries.Add(new("closed", "Closed", "Incident closed", incident.Status, closedAt));
+            u.CreatedAtUtc,
+            Acknowledgeable: u.UpdateType is "General" or "Hazard",
+            u.AcknowledgedAtUtc,
+            u.AcknowledgedByName)));
+        if (incident.ClosedAtUtc is { } closedAt)
+            entries.Add(new("closed", "Closed", "Incident closed", incident.Status, closedAt,
+                Acknowledgeable: false, AcknowledgedAtUtc: null, AcknowledgedByName: null));
 
         return entries.OrderBy(e => e.Timestamp).ToList();
     }
 
-    // Append-only in practice -- an IncidentUpdate row is immutable once
-    // written, and "created"/"closed" are each stable once they exist -- so
-    // syncing never needs to remove or edit an existing entry, only add
-    // whatever's in latest that isn't in Timeline yet, matching BuildTimeline's
-    // own already-sorted order.
+    // Mostly append-only -- an IncidentUpdate row's text/author/timestamp is
+    // immutable once written -- but AcknowledgedAtUtc can flip on an entry
+    // already in the list (a crew member acks a note minutes after it
+    // posted), so an existing entry whose acknowledgement changed gets
+    // replaced in place rather than skipped, same index, same scroll
+    // position preserved either way.
     private void SyncTimeline(List<TimelineEntry> latest)
     {
-        var existingIds = Timeline.Select(t => t.Id).ToHashSet();
-        foreach (var entry in latest.Where(e => !existingIds.Contains(e.Id)))
-            Timeline.Add(entry);
+        foreach (var entry in latest)
+        {
+            var index = -1;
+            for (var i = 0; i < Timeline.Count; i++)
+            {
+                if (Timeline[i].Id != entry.Id) continue;
+                index = i;
+                break;
+            }
+
+            if (index < 0) Timeline.Add(entry);
+            else if (Timeline[index].AcknowledgedAtUtc != entry.AcknowledgedAtUtc) Timeline[index] = entry;
+        }
     }
 
     [RelayCommand]
@@ -249,6 +305,9 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             var locationChanged = Incident?.Latitude != result.Latitude || Incident?.Longitude != result.Longitude;
             Incident = result;
             OnPropertyChanged(nameof(FormattedAddress));
+            OnPropertyChanged(nameof(IncidentNumberLabel));
+            OnPropertyChanged(nameof(StartedLabel));
+            OnPropertyChanged(nameof(ApplianceGroups));
             SyncTimeline(BuildTimeline(result));
             OnPropertyChanged(nameof(HasLocation));
             OnPropertyChanged(nameof(ShowMap));
@@ -319,7 +378,34 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     }
 
     [RelayCommand]
+    private async Task AcknowledgeUpdateAsync(string updateId)
+    {
+        if (!Guid.TryParse(updateId, out var id)) return;
+        try
+        {
+            var (result, error) = await apiClient.AcknowledgeUpdateAsync(IncidentId, id);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                SyncTimeline(BuildTimeline(result));
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    [RelayCommand]
     private async Task GoBackAsync() => await Shell.Current.GoToAsync("..");
+
+    [RelayCommand]
+    private async Task ViewHierarchyAsync() => await Shell.Current.GoToAsync($"incident-hierarchy?id={IncidentId}");
 
     // Navigates immediately rather than awaiting the attendance-update call
     // first -- that call is already best-effort/a no-op API-side (no

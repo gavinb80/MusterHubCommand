@@ -48,6 +48,9 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<(IncidentDto? Result, string? Error)> AddNoteAsync(Guid incidentId, string text) =>
         PostAsync<AddCrewNoteRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/notes", new AddCrewNoteRequest(text, null));
 
+    public Task<(IncidentDto? Result, string? Error)> AcknowledgeUpdateAsync(Guid incidentId, Guid updateId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/updates/{updateId}/acknowledge");
+
     public Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId) =>
         GetAsync<RouteResponseDto>($"api/tablet/incidents/{incidentId}/route");
 
