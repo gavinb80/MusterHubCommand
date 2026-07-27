@@ -18,6 +18,21 @@ body {
   border-radius: var(--radius-card);
 }
 
+.appliance-label-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 9999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--content-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.appliance-label-tooltip::before {
+  display: none;
+}
+
 @media print {
   .no-print {
     display: none;
