@@ -19,8 +19,13 @@ namespace MusterHubCommand.Api.Controllers;
 // everything else about an incident (status, attendance, control-room
 // updates) is Vision/operator-authored.
 [Route("api/tablet/incidents")]
-public class TabletIncidentsController(IncidentService incidentService, ApplicationDbContext db, RoutingService routingService) : DeviceControllerBase
+public class TabletIncidentsController(IncidentService incidentService, ApplicationDbContext db, RoutingService routingService, IFileStorage fileStorage) : DeviceControllerBase
 {
+    private const long MaxAttachmentBytes = 50 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedAttachmentContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg", "image/png", "image/heic", "image/heif", "image/webp", "application/pdf",
+    };
     [HttpGet]
     public async Task<ActionResult<List<IncidentSummaryDto>>> List()
     {
@@ -33,7 +38,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
     {
         var incident = await incidentService.FindByIdAsync(OrganisationId, id);
         if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
-        return Ok(incident.ToDto());
+        return Ok(await incident.ToDtoWithLocationsAsync(db));
     }
 
     [HttpPost("{id}/notes")]
@@ -47,10 +52,68 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         // of this device being allowed to see the incident at all), so a
         // crew note always reads as "KV57P1", not a bare, unattributed
         // "Crew note" indistinguishable from any other appliance's.
-        var updated = await incidentService.AddUpdateAsync(
-            OrganisationId, id, IncidentUpdateSource.Crew,
-            DeviceCallsign, request.AuthorEmployeeId, request.Text, IncidentUpdateType.Note);
-        return Ok(updated!.ToDto());
+        try
+        {
+            var updated = await incidentService.AddUpdateAsync(
+                OrganisationId, id, IncidentUpdateSource.Crew,
+                DeviceCallsign, request.AuthorEmployeeId, request.Text, IncidentUpdateType.Note, request.ReplyToUpdateId);
+            return Ok(updated!.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPost("{id}/updates/{updateId}/acknowledge")]
+    public async Task<ActionResult<IncidentDto>> AcknowledgeUpdate(Guid id, Guid updateId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        var updated = await incidentService.AcknowledgeUpdateAsync(OrganisationId, id, updateId, DeviceCallsign!);
+        return Ok((updated ?? incident).ToDto());
+    }
+
+    // Same shape as the notes endpoint above -- device callsign as the
+    // author, not a caller-supplied name.
+    [HttpPost("{id}/actions")]
+    public async Task<ActionResult<IncidentDto>> AddAction(Guid id, AddActionRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Text)) return BadRequest("Text is required.");
+
+        try
+        {
+            var updated = await incidentService.RaiseActionAsync(
+                OrganisationId, id, request.Kind, request.Text.Trim(), IncidentUpdateSource.Crew,
+                DeviceCallsign, null,
+                request.AssignedToEmployeeId, request.AssignedToName, request.SectorId);
+            return Ok(updated!.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPost("{id}/actions/{actionId}/acknowledge")]
+    public async Task<ActionResult<IncidentDto>> AcknowledgeAction(Guid id, Guid actionId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        var updated = await incidentService.AcknowledgeActionAsync(OrganisationId, id, actionId, DeviceCallsign!);
+        return Ok((updated ?? incident).ToDto());
+    }
+
+    [HttpPost("{id}/actions/{actionId}/resolve")]
+    public async Task<ActionResult<IncidentDto>> ResolveAction(Guid id, Guid actionId, ResolveActionRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        try
+        {
+            var updated = await incidentService.ResolveActionAsync(OrganisationId, id, actionId, request.Status, DeviceCallsign!);
+            return Ok((updated ?? incident).ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
     // From this device's own last-reported GPS to the incident, using
@@ -85,6 +148,61 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
 
         var updated = await incidentService.SetSingleApplianceStatusAsync(OrganisationId, id, DeviceCallsign!, ApplianceStatus.EnRoute);
         return Ok((updated ?? incident).ToDto());
+    }
+
+    [HttpPost("{id}/attachments")]
+    [RequestSizeLimit(MaxAttachmentBytes + 1024)]
+    public async Task<ActionResult<IncidentAttachmentDto>> UploadAttachment(Guid id, IFormFile file)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        if (file.Length == 0) return BadRequest("File is empty.");
+        if (file.Length > MaxAttachmentBytes) return BadRequest("File is too large (max 50MB).");
+        if (!AllowedAttachmentContentTypes.Contains(file.ContentType)) return BadRequest($"Unsupported file type '{file.ContentType}'.");
+
+        var attachment = new IncidentAttachment
+        {
+            OrganisationId = OrganisationId,
+            IncidentId = id,
+            FileName = file.FileName,
+            ContentType = file.ContentType,
+            SizeBytes = file.Length,
+            StoragePath = "",
+            UploadedByDeviceId = DeviceId,
+        };
+        attachment.StoragePath = $"{OrganisationId}/{id}/{attachment.Id}{Path.GetExtension(file.FileName)}";
+
+        await using (var stream = file.OpenReadStream())
+            await fileStorage.SaveAsync(attachment.StoragePath, stream, file.ContentType);
+
+        db.IncidentAttachments.Add(attachment);
+        await db.SaveChangesAsync();
+
+        var deviceLabel = await db.Devices.IgnoreQueryFilters().Where(d => d.Id == DeviceId).Select(d => d.Label).FirstOrDefaultAsync();
+        return Ok(new IncidentAttachmentDto(attachment.Id, attachment.FileName, attachment.ContentType, attachment.SizeBytes, attachment.UploadedAtUtc, deviceLabel));
+    }
+
+    // Attendance-scoped, not a shared endpoint with the web console's own
+    // /api/incident-attachments/{id} -- device-token and JWT auth don't
+    // share a pipeline cleanly, and this route additionally has to check
+    // the attachment's own incident is one this device is attending, not
+    // just that any operator in the org can see it.
+    [HttpGet("/api/tablet/incident-attachments/{attachmentId}")]
+    public async Task<IActionResult> DownloadAttachment(Guid attachmentId)
+    {
+        // AttendedByThisDevice reads incident.Appliances -- without this
+        // ThenInclude it silently evaluates against the entity's default
+        // empty list rather than throwing, so every request looked
+        // "not attending" regardless of actual attendance.
+        var attachment = await db.IncidentAttachments.IgnoreQueryFilters()
+            .Include(a => a.Incident).ThenInclude(i => i!.Appliances)
+            .FirstOrDefaultAsync(a => a.Id == attachmentId && a.OrganisationId == OrganisationId);
+        if (attachment?.Incident is null || !AttendedByThisDevice(attachment.Incident)) return NotFound();
+
+        var stream = await fileStorage.OpenReadAsync(attachment.StoragePath);
+        if (stream is null) return NotFound();
+        return File(stream, attachment.ContentType, attachment.FileName);
     }
 
     // Station match is necessary but not sufficient -- a device with no

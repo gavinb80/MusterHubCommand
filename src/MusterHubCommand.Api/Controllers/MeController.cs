@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MusterHubCommand.Api.Data;
+using MusterHubCommand.Api.Data.Entities;
 using MusterHubCommand.Api.Services;
 
 namespace MusterHubCommand.Api.Controllers;
@@ -10,8 +11,8 @@ namespace MusterHubCommand.Api.Controllers;
 // on a 403 after the fact. The API still enforces every one of these
 // server-side regardless of what this reports; this is purely so a plain
 // signed-in user never sees a control they can't actually use. Same shape
-// as Rota's MeController, simplified for Command's single-flag operator
-// model (no manageable-org-unit set to compute).
+// as Rota's MeController, simplified for Command's two-tier operator model
+// (no manageable-org-unit set to compute).
 [Route("api/me")]
 public class MeController(
     ApplicationDbContext db,
@@ -30,7 +31,9 @@ public class MeController(
 
         var isBootstrapping = await operatorChecker.IsBootstrappingAsync();
         var isOperator = isBootstrapping || (employeeId is not null && await operatorChecker.IsOperatorAsync(employeeId.Value));
+        var operatorTier = employeeId is null ? null : await operatorChecker.GetTierAsync(employeeId.Value);
+        var isIncidentCommander = operatorTier == CommandOperatorTier.IncidentCommander;
 
-        return Ok(new { organisationId = OrganisationId, employeeId, displayName, isOperator, isBootstrapping });
+        return Ok(new { organisationId = OrganisationId, employeeId, displayName, isOperator, isBootstrapping, operatorTier, isIncidentCommander });
     }
 }

@@ -21,7 +21,7 @@ public class TimelineKindToColorConverter : IValueConverter
         var key = (value as string) switch
         {
             "Created" => "Gray400",
-            "ResourceChange" => "StatusMobilised",
+            "ResourceChange" or "ActionChange" => "StatusMobilised",
             "Hazard" => "StatusHazard",
             "Closed" => "StatusClosed",
             _ => "Gray400", // Note, General

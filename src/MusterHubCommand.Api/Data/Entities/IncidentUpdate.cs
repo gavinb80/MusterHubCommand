@@ -12,6 +12,11 @@ public enum IncidentUpdateType
     Hazard,
     ResourceChange,
     Note,
+    // Auto-logged when an IncidentAction changes status -- same role
+    // ResourceChange plays for appliance status, so the Timeline stays
+    // the one "what happened" feed rather than a second, disconnected
+    // log. Not acknowledgeable, same rule as ResourceChange.
+    ActionChange,
 }
 
 // The live timeline -- control-room-pushed updates and crew-entered notes
@@ -36,6 +41,19 @@ public class IncidentUpdate
 
     public required string Text { get; set; }
     public IncidentUpdateType UpdateType { get; set; } = IncidentUpdateType.General;
+
+    // Null = not yet acknowledged. Only meaningful for General/Hazard --
+    // a ResourceChange line is a status log entry, not something anyone
+    // needs to confirm they've seen.
+    public DateTimeOffset? AcknowledgedAtUtc { get; set; }
+    public string? AcknowledgedByName { get; set; }
+
+    // Either side replying to a specific prior message -- thickens this
+    // same append-only Timeline into a lightweight thread rather than
+    // introducing a separate conversation view. Never itself replied-to
+    // recursively deep in practice, but nothing stops it.
+    public Guid? ReplyToUpdateId { get; set; }
+    public IncidentUpdate? ReplyToUpdate { get; set; }
 
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }

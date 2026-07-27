@@ -3,12 +3,16 @@
 // strings on the wire (Program.cs registers a global JsonStringEnumConverter),
 // not the ordinal ints Rota/Skills' own DTOs use.
 
+export type CommandOperatorTier = "ControlRoom" | "CommandSupport" | "IncidentCommander";
+
 export interface MeResponse {
   organisationId: string;
   employeeId: string | null;
   displayName: string | null;
   isOperator: boolean;
   isBootstrapping: boolean;
+  operatorTier: CommandOperatorTier | null;
+  isIncidentCommander: boolean;
 }
 
 export interface OrgUnitDto {
@@ -23,19 +27,43 @@ export interface EmployeeDto {
   id: string;
   displayName: string;
   employeeNumber: string | null;
-  isOperator: boolean;
+  operatorTier: CommandOperatorTier | null;
 }
 
 export type IncidentStatus = "Open" | "Closed" | "Cancelled";
 export type ApplianceStatus = "Mobilised" | "EnRoute" | "OnScene" | "StoodDown";
+export type ResourceKind = "Appliance" | "OfficerVehicle" | "Specialist";
 export type IncidentUpdateSource = "ControlRoom" | "Crew";
-export type IncidentUpdateType = "General" | "Hazard" | "ResourceChange" | "Note";
+export type IncidentUpdateType = "General" | "Hazard" | "ResourceChange" | "Note" | "ActionChange";
+export type IncidentActionKind = "Task" | "ResourceRequest";
+export type IncidentActionStatus = "Open" | "Acknowledged" | "Completed" | "Declined";
 
 export interface IncidentApplianceDto {
   id: string;
   callsign: string;
   status: ApplianceStatus;
+  resourceKind: ResourceKind;
+  sectorId: string | null;
+  officerInChargeEmployeeId: string | null;
+  // Always the display name -- resolved server-side the same way
+  // IncidentSectorDto.personInChargeName is.
+  officerInChargeName: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  locationUpdatedAtUtc: string | null;
   updatedAtUtc: string;
+}
+
+export interface IncidentSectorDto {
+  id: string;
+  name: string;
+  sortOrder: number;
+  parentId: string | null;
+  personInChargeEmployeeId: string | null;
+  // Always the display name -- resolved server-side from the linked
+  // Employee when personInChargeEmployeeId is set, or the free-text name
+  // otherwise.
+  personInChargeName: string | null;
 }
 
 export interface IncidentUpdateDto {
@@ -45,6 +73,29 @@ export interface IncidentUpdateDto {
   authorEmployeeId: string | null;
   text: string;
   updateType: IncidentUpdateType;
+  acknowledgedAtUtc: string | null;
+  acknowledgedByName: string | null;
+  replyToUpdateId: string | null;
+  createdAtUtc: string;
+}
+
+// assignedToName/raisedByName are always the display name -- resolved
+// server-side the same way IncidentSectorDto.personInChargeName is.
+export interface IncidentActionDto {
+  id: string;
+  kind: IncidentActionKind;
+  text: string;
+  status: IncidentActionStatus;
+  source: IncidentUpdateSource;
+  raisedByName: string | null;
+  raisedByEmployeeId: string | null;
+  assignedToEmployeeId: string | null;
+  assignedToName: string | null;
+  sectorId: string | null;
+  acknowledgedAtUtc: string | null;
+  acknowledgedByName: string | null;
+  resolvedAtUtc: string | null;
+  resolvedByName: string | null;
   createdAtUtc: string;
 }
 
@@ -62,8 +113,31 @@ export interface IncidentDto {
   startedAtUtc: string;
   closedAtUtc: string | null;
   updatedAtUtc: string;
+  closeTypeId: string | null;
+  closeTypeCode: string | null;
+  closeTypeName: string | null;
+  closeActionsTaken: string | null;
+  closeOutcome: string | null;
   appliances: IncidentApplianceDto[];
   updates: IncidentUpdateDto[];
+  sectors: IncidentSectorDto[];
+  actions: IncidentActionDto[];
+  attachments: IncidentAttachmentDto[];
+}
+
+export interface IncidentCloseTypeDto {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface IncidentAttachmentDto {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedAtUtc: string;
+  uploadedByName: string | null;
 }
 
 export interface IncidentSummaryDto {
@@ -108,6 +182,61 @@ export interface AddIncidentUpdateRequest {
   authorName?: string | null;
   text: string;
   updateType?: IncidentUpdateType;
+  replyToUpdateId?: string | null;
+}
+
+export interface AcknowledgeUpdateRequest {
+  acknowledgedByName?: string | null;
+}
+
+// Kind isn't direction-locked -- see the API's own AddActionRequest comment.
+export interface AddActionRequest {
+  kind: IncidentActionKind;
+  text: string;
+  raisedByName?: string | null;
+  assignedToEmployeeId?: string | null;
+  assignedToName?: string | null;
+  sectorId?: string | null;
+}
+
+export interface AcknowledgeActionRequest {
+  acknowledgedByName?: string | null;
+}
+
+export interface ResolveActionRequest {
+  status: IncidentActionStatus;
+  resolvedByName?: string | null;
+}
+
+export interface AddSectorRequest {
+  name: string;
+  parentId?: string | null;
+  personInChargeEmployeeId?: string | null;
+  personInChargeName?: string | null;
+}
+
+// Full-replace, not a sparse patch -- see the API's own UpdateSectorRequest
+// comment for why (parentId/personInCharge are themselves nullable, so
+// there's no spare bit left to mean "leave this alone").
+export interface UpdateSectorRequest {
+  name: string;
+  parentId: string | null;
+  personInChargeEmployeeId: string | null;
+  personInChargeName: string | null;
+}
+
+export interface AssignSectorRequest {
+  sectorId: string | null;
+}
+
+export interface SetResourceKindRequest {
+  resourceKind: ResourceKind;
+}
+
+// Full-replace, same reasoning as UpdateSectorRequest.
+export interface SetApplianceOfficerRequest {
+  officerInChargeEmployeeId: string | null;
+  officerInChargeName: string | null;
 }
 
 export interface DeviceDto {

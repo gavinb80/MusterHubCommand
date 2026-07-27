@@ -18,26 +18,35 @@ public class EmployeesController(
     [HttpGet]
     public async Task<ActionResult<List<EmployeeDto>>> List()
     {
-        var operatorIds = await db.CommandOperators.Select(o => o.EmployeeId).ToHashSetAsync();
+        var tiersByEmployeeId = await db.CommandOperators.ToDictionaryAsync(o => o.EmployeeId, o => o.Tier);
         var employees = await db.Employees.OrderBy(e => e.DisplayName).ToListAsync();
-        return Ok(employees.Select(e => new EmployeeDto(e.Id, e.DisplayName, e.EmployeeNumber, operatorIds.Contains(e.Id))));
+        return Ok(employees.Select(e =>
+            new EmployeeDto(e.Id, e.DisplayName, e.EmployeeNumber, tiersByEmployeeId.TryGetValue(e.Id, out var tier) ? tier : null)));
     }
 
-    // Grant/revoke Control Room Operator -- Command's one and only
-    // permission (see CommandOperator's own comment for why this isn't a
-    // generic role/permission-code system).
+    // Grant/revoke/promote/demote a Control Room Operator -- Command's two
+    // permission tiers (see CommandOperator's own comment for why this
+    // isn't a generic role/permission-code system). Only an Incident
+    // Commander can change anyone's tier, including their own.
     [HttpPut("{id}/operator")]
-    public async Task<IActionResult> SetOperator(Guid id, [FromBody] bool isOperator)
+    public async Task<IActionResult> SetOperator(Guid id, [FromBody] SetOperatorRequest request)
     {
-        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
         if (!await db.Employees.AnyAsync(e => e.Id == id)) return NotFound();
 
         var existing = await db.CommandOperators.FirstOrDefaultAsync(o => o.EmployeeId == id);
-        if (isOperator && existing is null)
+        if (request.Tier is { } tier)
         {
-            db.CommandOperators.Add(new CommandOperator { OrganisationId = OrganisationId, EmployeeId = id });
+            if (existing is null)
+            {
+                db.CommandOperators.Add(new CommandOperator { OrganisationId = OrganisationId, EmployeeId = id, Tier = tier });
+            }
+            else
+            {
+                existing.Tier = tier;
+            }
         }
-        else if (!isOperator && existing is not null)
+        else if (existing is not null)
         {
             db.CommandOperators.Remove(existing);
         }

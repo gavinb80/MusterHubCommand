@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="MusterHubCommandTablet.Views.IncidentDetailPage"
+    x:Name="PageRoot"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
     xmlns:models="clr-namespace:MusterHubCommandTablet.Models"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     x:DataType="vm:IncidentDetailViewModel"
     Shell.NavBarIsVisible="False"
     Padding="20">
@@ -16,7 +18,9 @@
 
             <HorizontalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="16,0,0,0" Spacing="12">
                 <Label Text="{Binding Incident.IncidentType}" Style="{StaticResource PageTitleLabel}" VerticalOptions="Center" />
+                <Label Text="{Binding IncidentNumberLabel}" Style="{StaticResource CardSubtitleLabel}" VerticalOptions="Center" />
                 <Label Text="{Binding FormattedAddress}" Style="{StaticResource CardSubtitleLabel}" VerticalOptions="Center" />
+                <Label Text="{Binding StartedLabel}" Style="{StaticResource CardSubtitleLabel}" VerticalOptions="Center" />
             </HorizontalStackLayout>
 
             <Button Grid.Column="2" Text="{Binding MapToggleLabel}" Command="{Binding ToggleMapCommand}" Style="{StaticResource SecondaryButton}" VerticalOptions="Center" Margin="0,0,12,0" IsVisible="{Binding HasLocation}" HeightRequest="36" Padding="12,0" />
@@ -54,9 +58,43 @@
             <Grid Grid.Row="0" RowDefinitions="Auto, *" VerticalOptions="Fill">
                 <Label Grid.Row="0" Text="Route to incident" Style="{StaticResource CardTitleLabel}" FontSize="16" FontAttributes="Bold" Margin="0,0,0,8" IsVisible="{Binding HasLocation}" />
                 <Border Grid.Row="1" StrokeShape="RoundRectangle 8" StrokeThickness="0" VerticalOptions="Fill" HorizontalOptions="Fill">
-                    <WebView x:Name="MapWebView" Source="{Binding MapSource}" Navigated="OnMapNavigated" VerticalOptions="Fill" HorizontalOptions="Fill" />
+                    <Grid>
+                        <!-- ZIndex is required, not decorative: on
+                             Android, a WebView left at the implicit
+                             default ZIndex painted over every later
+                             sibling in this Grid regardless of XAML
+                             declaration order (confirmed by testing a
+                             plain unbound BoxView, which was also
+                             invisible until this was added). Giving the
+                             WebView an explicit ZIndex fixes the paint
+                             order for all its siblings, no matter what
+                             ZIndex (or lack of one) they have. -->
+                        <WebView x:Name="MapWebView" Source="{Binding MapSource}" Navigated="OnMapNavigated" VerticalOptions="Fill" HorizontalOptions="Fill" ZIndex="0" />
+
+                        <!-- Replaces Leaflet's own +/- control, which
+                             index.html disables (see its zoomControl
+                             comment), same fix NavigatePage already
+                             applies to its own map. -->
+                        <VerticalStackLayout HorizontalOptions="Start" VerticalOptions="Start" Margin="8" Spacing="6" IsVisible="{Binding HasLocation}">
+                            <Button Text="+" Style="{StaticResource MapZoomButton}" Command="{Binding ZoomInCommand}" />
+                            <Button Text="&#8722;" Style="{StaticResource MapZoomButton}" Command="{Binding ZoomOutCommand}" />
+                        </VerticalStackLayout>
+
+                        <ImageButton
+                            Source="center_incident.svg"
+                            Style="{StaticResource MapIconButton}"
+                            Command="{Binding RecenterMapCommand}"
+                            HorizontalOptions="End"
+                            VerticalOptions="Start"
+                            Margin="8"
+                            IsVisible="{Binding HasLocation}">
+                            <ImageButton.Behaviors>
+                                <toolkit:IconTintColorBehavior TintColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                            </ImageButton.Behaviors>
+                        </ImageButton>
+                    </Grid>
                 </Border>
-                
+
                 <Label Grid.Row="1" Text="No location set for this incident yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding HasLocation, Converter={StaticResource InvertedBoolConverter}}" HorizontalOptions="Center" VerticalOptions="Center" />
             </Grid>
 
@@ -70,7 +108,12 @@
             </VerticalStackLayout>
         </Grid>
 
-        <!-- Right Column: Timeline & Attendance -->
+        <!-- Right Column: one tab visible at a time (Overview / Tasks &
+             Requests / Timeline), not all three stacked. Stacking them
+             is what caused Timeline to get squeezed to a sliver once
+             there were three cards competing for one fixed-height column
+             (a ScrollView patch fixed the symptom, not the cause). Each
+             tab's content now gets the entire remaining row. -->
         <Grid Grid.Row="2" Grid.Column="1" RowDefinitions="Auto, *" RowSpacing="16" VerticalOptions="Fill">
             <Grid.Triggers>
                 <DataTrigger TargetType="Grid" Binding="{Binding ShowMap}" Value="False">
@@ -78,22 +121,118 @@
                     <Setter Property="Grid.ColumnSpan" Value="2" />
                 </DataTrigger>
             </Grid.Triggers>
-            
-            <VerticalStackLayout Grid.Row="0" Spacing="16">
+
+            <!-- Tab strip -->
+            <HorizontalStackLayout Grid.Row="0" Spacing="24">
+                <Label Text="Overview" FontAttributes="Bold" FontSize="16" VerticalOptions="Center">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding SelectTabCommand}" CommandParameter="Overview" />
+                    </Label.GestureRecognizers>
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
+                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
+                            <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
+                            <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+
+                <HorizontalStackLayout Spacing="4">
+                    <Label Text="Tasks &amp; Requests" FontAttributes="Bold" FontSize="16" VerticalOptions="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SelectTabCommand}" CommandParameter="Tasks" />
+                        </Label.GestureRecognizers>
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                    <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{StaticResource Gray400}">
+                        <Label Text="{Binding OpenActionsCount}" Style="{StaticResource StatusPillLabel}" FontSize="12" />
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding OpenActionsCount}" Value="0">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                    </Border>
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout Spacing="4">
+                    <Label Text="Timeline" FontAttributes="Bold" FontSize="16" VerticalOptions="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SelectTabCommand}" CommandParameter="Timeline" />
+                        </Label.GestureRecognizers>
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                    <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{StaticResource StatusHazard}">
+                        <Label Text="{Binding UnacknowledgedUpdateCount}" Style="{StaticResource StatusPillLabel}" FontSize="12" />
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding UnacknowledgedUpdateCount}" Value="0">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                    </Border>
+                </HorizontalStackLayout>
+            </HorizontalStackLayout>
+
+            <!-- Overview tab: Attendance -->
+            <ScrollView Grid.Row="1" IsVisible="{Binding IsOverviewSelected}">
+            <VerticalStackLayout Spacing="16">
                 <!-- Description -->
                 <Label Text="{Binding Incident.Description}" IsVisible="{Binding Incident.Description, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
 
                 <!-- Attendance Card -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
-                        <Label Text="Attendance" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" />
+                        <Grid ColumnDefinitions="*, Auto, Auto, Auto" ColumnSpacing="8">
+                            <Label Grid.Column="0" Text="Attendance" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="Annotate map" Command="{Binding AnnotateMapCommand}" IsVisible="{Binding HasLocation}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                            <Button Grid.Column="2" Text="Photos" Command="{Binding ViewPhotosCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                            <Button Grid.Column="3" Text="View hierarchy" Command="{Binding ViewHierarchyCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                        </Grid>
                         <Label Text="No appliances attending yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Incident.Appliances, Converter={StaticResource CollectionEmptyConverter}}" />
-                        <CollectionView ItemsSource="{Binding Incident.Appliances}" SelectionMode="None">
+                        <!-- Sector-grouped, read-only. Creating sectors and
+                             assigning appliances stays a control-room action.
+                             See ApplianceGroups' own comment on the ViewModel. -->
+                        <CollectionView ItemsSource="{Binding ApplianceGroups}" IsGrouped="True" SelectionMode="None">
+                            <CollectionView.GroupHeaderTemplate>
+                                <DataTemplate x:DataType="vm:ApplianceGroup">
+                                    <Label Text="{Binding SectorName}" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" Margin="0,8,0,2" />
+                                </DataTemplate>
+                            </CollectionView.GroupHeaderTemplate>
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="models:IncidentApplianceDto">
                                     <Border Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="0,0,0,0" Padding="0,12">
                                         <Grid ColumnDefinitions="*,Auto">
-                                            <Label Grid.Column="0" Text="{Binding Callsign}" FontAttributes="Bold" VerticalOptions="Center" FontSize="16" />
+                                            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                                <HorizontalStackLayout Spacing="6">
+                                                    <Label Text="{Binding Callsign}" FontAttributes="Bold" VerticalOptions="Center" FontSize="16" />
+                                                    <Label Text="{Binding ResourceKind, Converter={StaticResource ResourceKindLabelConverter}}" Style="{StaticResource CaptionLabel}" VerticalOptions="Center" />
+                                                </HorizontalStackLayout>
+                                                <Label Text="{Binding LocationUpdatedAtUtc, StringFormat='Last seen {0:t}'}" IsVisible="{Binding LocationUpdatedAtUtc, Converter={StaticResource ObjectNotNullToBoolConverter}}" Style="{StaticResource CaptionLabel}" />
+                                                <Label Text="{Binding OfficerInChargeName, StringFormat='Officer: {0}'}" IsVisible="{Binding OfficerInChargeName, Converter={StaticResource StringNotEmptyToBoolConverter}}" Style="{StaticResource CaptionLabel}" />
+                                            </VerticalStackLayout>
                                             <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}">
                                                 <Label Text="{Binding Status}" Style="{StaticResource StatusPillLabel}" FontSize="14" />
                                             </Border>
@@ -105,9 +244,111 @@
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>
+            </ScrollView>
 
-            <!-- Timeline Card -->
-            <Border Grid.Row="1" Style="{StaticResource CardBorder}" VerticalOptions="Fill">
+            <!-- Tasks & Requests tab. One entity for both, see
+                 IncidentAction's own comment on the API side; every
+                 status change also lands in the Timeline tab via
+                 QueueActionChangeUpdate. -->
+            <ScrollView Grid.Row="1" IsVisible="{Binding IsTasksSelected}">
+            <VerticalStackLayout Spacing="16">
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" Text="Tasks &amp; Requests" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="+ Add" Command="{Binding ToggleAddingActionCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                        </Grid>
+                        <Label Text="Nothing raised yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Actions, Converter={StaticResource CollectionEmptyConverter}}" />
+
+                        <CollectionView ItemsSource="{Binding Actions}" SelectionMode="None">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:IncidentActionDto">
+                                    <Border Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="0,0,0,0" Padding="0,10">
+                                        <VerticalStackLayout Spacing="4">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <VerticalStackLayout Grid.Column="0" Spacing="1">
+                                                    <Label Text="{Binding Kind, Converter={StaticResource IncidentActionKindLabelConverter}}" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" />
+                                                    <Label Text="{Binding Text}" FontSize="15" />
+                                                    <Label Text="{Binding AssignedToName, StringFormat='Assigned to {0}'}" Style="{StaticResource CaptionLabel}" IsVisible="{Binding AssignedToName, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                                                </VerticalStackLayout>
+                                                <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}" VerticalOptions="Start">
+                                                    <Label Text="{Binding Status}" Style="{StaticResource StatusPillLabel}" FontSize="13" />
+                                                </Border>
+                                            </Grid>
+                                            <HorizontalStackLayout Spacing="12">
+                                                <Button
+                                                    Text="Acknowledge"
+                                                    Command="{Binding BindingContext.AcknowledgeActionCommand, Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    FontSize="13" Padding="10,4" HeightRequest="30">
+                                                    <Button.Triggers>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Acknowledged">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Completed">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Declined">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                    </Button.Triggers>
+                                                </Button>
+                                                <Button
+                                                    Text="Complete"
+                                                    Command="{Binding BindingContext.CompleteActionCommand, Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    FontSize="13" Padding="10,4" HeightRequest="30">
+                                                    <Button.Triggers>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Completed">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Declined">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                    </Button.Triggers>
+                                                </Button>
+                                                <Button
+                                                    Text="Decline"
+                                                    Command="{Binding BindingContext.DeclineActionCommand, Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    FontSize="13" Padding="10,4" HeightRequest="30">
+                                                    <Button.Triggers>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Completed">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Declined">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                    </Button.Triggers>
+                                                </Button>
+                                            </HorizontalStackLayout>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingAction}">
+                            <HorizontalStackLayout Spacing="8">
+                                <Button Text="Task" Command="{Binding SetActionKindCommand}" CommandParameter="Task" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                                <Button Text="Resource Request" Command="{Binding SetActionKindCommand}" CommandParameter="ResourceRequest" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                            </HorizontalStackLayout>
+                            <Entry Placeholder="What's needed?" Text="{Binding ActionText}" MaxLength="500" />
+                            <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalOptions="End">
+                                <Button Grid.Column="0" Text="Cancel" Command="{Binding ToggleAddingActionCommand}" Style="{StaticResource SecondaryButton}" />
+                                <Button Grid.Column="1" Text="Raise" Command="{Binding RaiseActionCommand}" IsEnabled="{Binding IsRaisingAction, Converter={StaticResource InvertedBoolConverter}}" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+            </ScrollView>
+
+            <!-- Timeline tab -->
+            <Border Grid.Row="1" Style="{StaticResource CardBorder}" VerticalOptions="Fill" IsVisible="{Binding IsTimelineSelected}">
                 <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8" VerticalOptions="Fill">
                     <Label Grid.Row="0" Text="Timeline" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" />
 
@@ -129,7 +370,49 @@
                                             <Label Grid.Column="0" Text="{Binding Caption}" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" FontSize="14" TextColor="{Binding Kind, Converter={StaticResource TimelineKindToColorConverter}}" />
                                             <Label Grid.Column="1" Text="{Binding Timestamp, StringFormat='{0:g}'}" Style="{StaticResource CaptionLabel}" FontSize="13" />
                                         </Grid>
+                                        <Label
+                                            Text="{Binding ReplyToText, StringFormat='&#8618; replying to: {0}'}"
+                                            Style="{StaticResource CaptionLabel}"
+                                            IsVisible="{Binding ReplyToText, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
                                         <Label Text="{Binding Text}" FontSize="15" />
+                                        <Label Style="{StaticResource CaptionLabel}" IsVisible="{Binding AcknowledgedAtUtc, Converter={StaticResource ObjectNotNullToBoolConverter}}">
+                                            <Label.Text>
+                                                <MultiBinding StringFormat="Acknowledged by {0} at {1:t}">
+                                                    <Binding Path="AcknowledgedByName" />
+                                                    <Binding Path="AcknowledgedAtUtc" />
+                                                </MultiBinding>
+                                            </Label.Text>
+                                        </Label>
+                                        <HorizontalStackLayout Spacing="12">
+                                            <Button
+                                                Text="Acknowledge"
+                                                Command="{Binding BindingContext.AcknowledgeUpdateCommand, Source={x:Reference PageRoot}}"
+                                                CommandParameter="{Binding Id}"
+                                                Style="{StaticResource SecondaryButton}"
+                                                FontSize="13"
+                                                Padding="10,4"
+                                                HeightRequest="30"
+                                                HorizontalOptions="Start">
+                                                <Button.Triggers>
+                                                    <DataTrigger TargetType="Button" Binding="{Binding Acknowledgeable}" Value="False">
+                                                        <Setter Property="IsVisible" Value="False" />
+                                                    </DataTrigger>
+                                                    <DataTrigger TargetType="Button" Binding="{Binding AcknowledgedAtUtc, Converter={StaticResource ObjectNotNullToBoolConverter}}" Value="True">
+                                                        <Setter Property="IsVisible" Value="False" />
+                                                    </DataTrigger>
+                                                </Button.Triggers>
+                                            </Button>
+                                            <Button
+                                                Text="Reply"
+                                                Command="{Binding BindingContext.StartReplyCommand, Source={x:Reference PageRoot}}"
+                                                CommandParameter="{Binding Id}"
+                                                Style="{StaticResource SecondaryButton}"
+                                                FontSize="13"
+                                                Padding="10,4"
+                                                HeightRequest="30"
+                                                HorizontalOptions="Start"
+                                                IsVisible="{Binding CanReply}" />
+                                        </HorizontalStackLayout>
                                     </VerticalStackLayout>
                                 </Grid>
                             </DataTemplate>
@@ -137,12 +420,18 @@
                     </CollectionView>
 
                     <!-- Note Entry Redesign -->
-                    <Border Grid.Row="2" Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="12,8" Margin="0,8,0,0">
-                        <Grid ColumnDefinitions="*, Auto">
-                            <Editor Grid.Column="0" Placeholder="Add a note..." Text="{Binding NoteText}" AutoSize="TextChanges" MaxLength="1000" VerticalOptions="Center" BackgroundColor="Transparent" MaximumHeightRequest="100" />
-                            <Button Grid.Column="1" Text="Post" Command="{Binding AddNoteCommand}" IsEnabled="{Binding IsPostingNote, Converter={StaticResource InvertedBoolConverter}}" VerticalOptions="Center" Style="{StaticResource SecondaryButton}" />
+                    <VerticalStackLayout Grid.Row="2" Spacing="4" Margin="0,8,0,0">
+                        <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding IsReplying}">
+                            <Label Grid.Column="0" Text="{Binding ReplyingToText, StringFormat='Replying to: {0}'}" Style="{StaticResource CaptionLabel}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                            <Button Grid.Column="1" Text="Cancel" Command="{Binding CancelReplyCommand}" Style="{StaticResource SecondaryButton}" FontSize="12" Padding="8,2" HeightRequest="26" />
                         </Grid>
-                    </Border>
+                        <Border Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="12,8">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <Editor Grid.Column="0" Placeholder="Add a note..." Text="{Binding NoteText}" AutoSize="TextChanges" MaxLength="1000" VerticalOptions="Center" BackgroundColor="Transparent" MaximumHeightRequest="100" />
+                                <Button Grid.Column="1" Text="Post" Command="{Binding AddNoteCommand}" IsEnabled="{Binding IsPostingNote, Converter={StaticResource InvertedBoolConverter}}" VerticalOptions="Center" Style="{StaticResource SecondaryButton}" />
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
                 </Grid>
             </Border>
         </Grid>

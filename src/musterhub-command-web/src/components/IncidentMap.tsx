@@ -1,4 +1,4 @@
-import { Circle, MapContainer, Marker, Polyline, TileLayer } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import markerIconUrl from "leaflet/dist/images/marker-icon.png";
 import markerIcon2xUrl from "leaflet/dist/images/marker-icon-2x.png";
@@ -31,8 +31,58 @@ export interface AppliancePosition {
   longitude: number;
 }
 
+// Recenter/Expand rendered via useMap() rather than passed a ref -- this is
+// the react-leaflet way to reach the underlying Leaflet map instance from
+// inside the tree MapContainer owns. Positioned below Leaflet's own
+// top-left zoom control so the two don't overlap.
+function MapControls({
+  latitude, longitude, appliances, onAnnotate,
+}: {
+  latitude: number;
+  longitude: number;
+  appliances?: AppliancePosition[];
+  onAnnotate?: () => void;
+}) {
+  const map = useMap();
+
+  const recenter = () => {
+    const points: [number, number][] = [[latitude, longitude], ...(appliances ?? []).map((a): [number, number] => [a.latitude, a.longitude])];
+    if (points.length === 1) {
+      map.setView(points[0], 16);
+    } else {
+      map.fitBounds(L.latLngBounds(points), { padding: [32, 32] });
+    }
+  };
+
+  return (
+    <div className="leaflet-top leaflet-right" style={{ marginTop: 76 }}>
+      <div className="leaflet-control leaflet-bar flex flex-col overflow-hidden bg-white">
+        <button
+          type="button"
+          title="Recenter"
+          onClick={recenter}
+          className="flex h-8 w-8 items-center justify-center text-body text-(--content-primary) hover:bg-(--surface-page)"
+        >
+          &#8982;
+        </button>
+        {onAnnotate && (
+          <button
+            type="button"
+            title="Expand & annotate"
+            onClick={onAnnotate}
+            className="flex h-8 w-8 items-center justify-center border-t border-(--surface-border) text-body text-(--content-primary) hover:bg-(--surface-page)"
+          >
+            &#10021;
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function IncidentMap({
   latitude, longitude, label, appliances, routePoints, geofenceRadiusMeters,
+  interactive = false, heightClassName = "h-64", onAnnotate,
 }: {
   latitude: number;
   longitude: number;
@@ -40,17 +90,27 @@ export function IncidentMap({
   appliances?: AppliancePosition[];
   routePoints?: [number, number][];
   geofenceRadiusMeters?: number;
+  // The small inline map on the incident page is deliberately inert (no
+  // scroll-hijacking, no accidental drag) -- the larger annotate view is
+  // the one place free pan/zoom is wanted, so it opts in explicitly.
+  interactive?: boolean;
+  heightClassName?: string;
+  onAnnotate?: () => void;
 }) {
   return (
     <MapContainer
       center={[latitude, longitude]}
       zoom={16}
-      className="h-64 w-full"
-      scrollWheelZoom={false}
+      className={`${heightClassName} w-full`}
+      scrollWheelZoom={interactive}
+      dragging={interactive}
+      doubleClickZoom={interactive}
+      touchZoom={interactive}
     >
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        crossOrigin="anonymous"
       />
       {geofenceRadiusMeters != null && (
         <Circle
@@ -66,6 +126,7 @@ export function IncidentMap({
       {routePoints && routePoints.length > 1 && (
         <Polyline positions={routePoints} pathOptions={{ color: "#0A84FF", weight: 4, opacity: 0.8 }} />
       )}
+      <MapControls latitude={latitude} longitude={longitude} appliances={appliances} onAnnotate={onAnnotate} />
     </MapContainer>
   );
 }

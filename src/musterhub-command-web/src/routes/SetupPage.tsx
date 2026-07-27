@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import type {
-  CreateDeviceResponse, CreateIntegrationApiKeyResponse, DeviceDto, EmployeeDto,
-  IntegrationApiKeyDto, OrganisationSettingsDto, OrgUnitDto, SaveVehicleProfileRequest, VehicleProfileDto,
+  CommandOperatorTier, CreateDeviceResponse, CreateIntegrationApiKeyResponse, DeviceDto, EmployeeDto,
+  IncidentCloseTypeDto, IntegrationApiKeyDto, MeResponse, OrganisationSettingsDto, OrgUnitDto,
+  SaveVehicleProfileRequest, VehicleProfileDto,
 } from "../api/types";
 
-const TABS = ["Stations", "Devices", "Vehicle profiles", "Integration keys", "Operators", "General"] as const;
+const TABS = ["Stations", "Devices", "Vehicle profiles", "Close types", "Integration keys", "Operators", "General"] as const;
 type Tab = (typeof TABS)[number];
 
 function RevealOnceBanner({ label, secret, onDismiss }: { label: string; secret: string; onDismiss: () => void }) {
@@ -281,6 +282,80 @@ function VehicleProfilesTab() {
   );
 }
 
+function CloseTypesTab() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const closeTypesQuery = useQuery({ queryKey: ["incident-close-types"], queryFn: () => apiFetch<IncidentCloseTypeDto[]>("/incident-close-types") });
+
+  const createMutation = useMutation({
+    mutationFn: (body: { code: string; name: string }) => apiFetch<IncidentCloseTypeDto>("/incident-close-types", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["incident-close-types"] });
+      showToast("Close type added");
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiFetch<void>(`/incident-close-types/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["incident-close-types"] });
+      showToast("Close type deleted");
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-body text-(--content-secondary)">
+        The classification codes offered when closing an incident, e.g. "M1.2.3 - Fire In Open".
+        A code already used to close an incident can't be deleted -- that would rewrite what the
+        incident was actually closed against.
+      </p>
+
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = new FormData(e.currentTarget);
+          createMutation.mutate({ code: String(form.get("code")), name: String(form.get("name")) });
+          e.currentTarget.reset();
+        }}
+      >
+        <label className="flex flex-col gap-1 text-body text-(--content-primary)">
+          Code
+          <input name="code" required placeholder="M1.2.3" className="w-32 rounded-lg border border-(--surface-border) px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-body text-(--content-primary)">
+          Name
+          <input name="name" required placeholder="Fire In Open" className="w-64 rounded-lg border border-(--surface-border) px-3 py-2" />
+        </label>
+        <button type="submit" disabled={createMutation.isPending} className="rounded-lg bg-brand-primary px-4 py-2 text-body font-semibold text-white disabled:opacity-60">
+          Add close type
+        </button>
+      </form>
+
+      <div className="flex flex-col gap-2">
+        {closeTypesQuery.data?.length === 0 && (
+          <p className="text-body text-(--content-secondary)">No close types yet -- closing an incident won't offer a classification.</p>
+        )}
+        {closeTypesQuery.data?.map((t) => (
+          <div key={t.id} className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-3">
+            <p className="text-body text-(--content-primary)"><span className="font-semibold">{t.code}</span> — {t.name}</p>
+            <button
+              type="button"
+              onClick={() => { if (confirm(`Delete "${t.code} - ${t.name}"?`)) deleteMutation.mutate(t.id); }}
+              className="text-body text-status-hazard"
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function IntegrationKeysTab() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -366,10 +441,14 @@ function OperatorsTab() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => apiFetch<EmployeeDto[]>("/employees") });
+  // Same cache key every other page's account block/gating already
+  // queries -- shares that result rather than firing a second /me request.
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
+  const canManage = meQuery.data?.isIncidentCommander ?? false;
 
   const setOperatorMutation = useMutation({
-    mutationFn: ({ id, isOperator }: { id: string; isOperator: boolean }) =>
-      apiFetch<void>(`/employees/${id}/operator`, { method: "PUT", body: JSON.stringify(isOperator) }),
+    mutationFn: ({ id, tier }: { id: string; tier: CommandOperatorTier | null }) =>
+      apiFetch<void>(`/employees/${id}/operator`, { method: "PUT", body: JSON.stringify({ tier }) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["employees"] }),
     onError: (error) => showToast(error.message, "error"),
   });
@@ -377,18 +456,27 @@ function OperatorsTab() {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-body text-(--content-secondary)">
-        Control Room Operators can create/edit incidents, push updates, and manage devices and integration keys.
+        Control Room and Command Support both create/edit incidents, push updates, and manage devices and
+        integration keys. Incident Commander adds closing/cancelling incidents, managing sectors and hierarchy, and
+        granting/revoking operators.
+        {!canManage && " Only an Incident Commander can change these."}
       </p>
       {employeesQuery.data?.map((e) => (
         <div key={e.id} className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-3">
           <span className="text-body text-(--content-primary)">{e.displayName}</span>
           <label className="flex items-center gap-2 text-body text-(--content-secondary)">
-            Operator
-            <input
-              type="checkbox"
-              checked={e.isOperator}
-              onChange={(ev) => setOperatorMutation.mutate({ id: e.id, isOperator: ev.target.checked })}
-            />
+            Operator tier
+            <select
+              disabled={!canManage}
+              value={e.operatorTier ?? ""}
+              onChange={(ev) => setOperatorMutation.mutate({ id: e.id, tier: (ev.target.value || null) as CommandOperatorTier | null })}
+              className="rounded-lg border border-(--surface-border) px-2 py-1 text-body text-(--content-primary) disabled:opacity-60"
+            >
+              <option value="">Not an operator</option>
+              <option value="ControlRoom">Control Room</option>
+              <option value="CommandSupport">Command Support</option>
+              <option value="IncidentCommander">Incident Commander</option>
+            </select>
           </label>
         </div>
       ))}
@@ -480,6 +568,7 @@ export function SetupPage() {
       {tab === "Stations" && <StationsTab />}
       {tab === "Devices" && <DevicesTab />}
       {tab === "Vehicle profiles" && <VehicleProfilesTab />}
+      {tab === "Close types" && <CloseTypesTab />}
       {tab === "Integration keys" && <IntegrationKeysTab />}
       {tab === "Operators" && <OperatorsTab />}
       {tab === "General" && <GeneralTab />}

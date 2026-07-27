@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Name="PageRoot"
+    x:Class="MusterHubCommandTablet.Views.PhotoCapturePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
+    x:DataType="vm:PhotoCaptureViewModel"
+    Shell.NavBarIsVisible="False"
+    Padding="20">
+
+    <Grid RowDefinitions="Auto, Auto, Auto, *" RowSpacing="16">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto, *, Auto">
+            <Button Grid.Column="0" Text="&#8592; Back" Style="{StaticResource SecondaryButton}" Command="{Binding GoBackCommand}" VerticalOptions="Center" />
+            <Label Grid.Column="1" Text="Photos &amp; Documents" Style="{StaticResource PageTitleLabel}" VerticalOptions="Center" Margin="16,0,0,0" />
+            <Button
+                Grid.Column="2"
+                Text="Take photo"
+                Command="{Binding TakePhotoCommand}"
+                IsEnabled="{Binding IsUploading, Converter={StaticResource InvertedBoolConverter}}"
+                VerticalOptions="Center" />
+        </Grid>
+
+        <Border
+            Grid.Row="1"
+            IsVisible="{Binding HasError}"
+            BackgroundColor="{StaticResource StatusHazard}"
+            StrokeThickness="0"
+            StrokeShape="RoundRectangle 10"
+            Padding="16,12">
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource White}" FontAttributes="Bold" />
+        </Border>
+
+        <ActivityIndicator Grid.Row="2" IsRunning="{Binding IsUploading}" IsVisible="{Binding IsUploading}" />
+
+        <Label
+            Grid.Row="3"
+            Text="No photos or documents attached yet."
+            Style="{StaticResource CardSubtitleLabel}"
+            IsVisible="{Binding HasNoAttachments}"
+            HorizontalOptions="Center"
+            VerticalOptions="Start"
+            Margin="0,40,0,0" />
+
+        <CollectionView Grid.Row="3" ItemsSource="{Binding Attachments}" SelectionMode="None">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:AttachmentItem">
+                    <Border Style="{StaticResource CardBorder}" Margin="0,0,0,8">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding BindingContext.ViewPhotoCommand, Source={x:Reference PageRoot}}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Grid ColumnDefinitions="80, *" ColumnSpacing="12">
+                            <Border
+                                Grid.Column="0"
+                                Stroke="{StaticResource BorderLight}"
+                                StrokeShape="RoundRectangle 8"
+                                HeightRequest="80"
+                                WidthRequest="80"
+                                Padding="0">
+                                <Grid>
+                                    <Image
+                                        Source="{Binding Thumbnail}"
+                                        Aspect="AspectFill"
+                                        IsVisible="{Binding Thumbnail, Converter={StaticResource ObjectNotNullToBoolConverter}}" />
+                                    <Label
+                                        Text="{Binding FileExtensionLabel}"
+                                        Style="{StaticResource CaptionLabel}"
+                                        HorizontalOptions="Center"
+                                        VerticalOptions="Center"
+                                        IsVisible="{Binding IsImage, Converter={StaticResource InvertedBoolConverter}}" />
+                                </Grid>
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                <Label Text="{Binding Dto.FileName}" FontAttributes="Bold" FontSize="14" LineBreakMode="TailTruncation" />
+                                <Label
+                                    Text="{Binding Dto.UploadedAtUtc, StringFormat='{0:g}'}"
+                                    Style="{StaticResource CaptionLabel}" />
+                                <Label
+                                    Text="{Binding Dto.UploadedByName}"
+                                    Style="{StaticResource CaptionLabel}"
+                                    IsVisible="{Binding Dto.UploadedByName, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>

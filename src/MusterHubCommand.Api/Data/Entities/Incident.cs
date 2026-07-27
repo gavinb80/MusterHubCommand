@@ -37,6 +37,16 @@ public class Incident : ITenantScoped
     public DateTimeOffset StartedAtUtc { get; set; }
     public DateTimeOffset? ClosedAtUtc { get; set; }
 
+    // Captured once, at close time, via POST /{id}/close -- not meaningful
+    // before then, so plain nullable columns rather than a separate 1:1 table.
+    // CloseTypeId is a reference into the org's own managed classification
+    // scheme (Setup > Close Types), not free text -- ActionsTaken/Outcome
+    // stay free text since there's no equivalent fixed vocabulary for them.
+    public Guid? CloseTypeId { get; set; }
+    public IncidentCloseType? CloseType { get; set; }
+    public string? CloseActionsTaken { get; set; }
+    public string? CloseOutcome { get; set; }
+
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     // Drives the tablet's poll comparison -- bumped on every field change,
@@ -47,4 +57,7 @@ public class Incident : ITenantScoped
 
     public List<IncidentAppliance> Appliances { get; set; } = [];
     public List<IncidentUpdate> Updates { get; set; } = [];
+    public List<IncidentSector> Sectors { get; set; } = [];
+    public List<IncidentAction> Actions { get; set; } = [];
+    public List<IncidentAttachment> Attachments { get; set; } = [];
 }

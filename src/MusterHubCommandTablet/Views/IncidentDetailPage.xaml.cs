@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using MusterHubCommandTablet.ViewModels;
+using Sentry;
 
 namespace MusterHubCommandTablet.Views;
 
@@ -18,6 +19,7 @@ public partial class IncidentDetailPage : ContentPage
         this.viewModel = viewModel;
         BindingContext = viewModel;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        viewModel.ScriptRequested += script => _ = RunScriptAsync(script);
     }
 
     protected override void OnAppearing()
@@ -43,5 +45,17 @@ public partial class IncidentDetailPage : ContentPage
         if (e.PropertyName == nameof(IncidentDetailViewModel.MapSource)) mapLoaded = false;
         if (mapLoaded && e.PropertyName == nameof(IncidentDetailViewModel.RouteScript))
             _ = MapWebView.EvaluateJavaScriptAsync(viewModel.RouteScript);
+    }
+
+    private async Task RunScriptAsync(string script)
+    {
+        try
+        {
+            await MapWebView.EvaluateJavaScriptAsync(script);
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
     }
 }

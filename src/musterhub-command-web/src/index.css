@@ -17,3 +17,9 @@ body {
   min-height: 240px;
   border-radius: var(--radius-card);
 }
+
+@media print {
+  .no-print {
+    display: none;
+  }
+}

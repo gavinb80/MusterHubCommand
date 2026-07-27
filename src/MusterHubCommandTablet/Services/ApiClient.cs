@@ -45,8 +45,20 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<(IncidentDto? Result, string? Error)> GetIncidentAsync(Guid id) =>
         GetAsync<IncidentDto>($"api/tablet/incidents/{id}");
 
-    public Task<(IncidentDto? Result, string? Error)> AddNoteAsync(Guid incidentId, string text) =>
-        PostAsync<AddCrewNoteRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/notes", new AddCrewNoteRequest(text, null));
+    public Task<(IncidentDto? Result, string? Error)> AddNoteAsync(Guid incidentId, string text, Guid? replyToUpdateId = null) =>
+        PostAsync<AddCrewNoteRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/notes", new AddCrewNoteRequest(text, null, replyToUpdateId));
+
+    public Task<(IncidentDto? Result, string? Error)> AcknowledgeUpdateAsync(Guid incidentId, Guid updateId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/updates/{updateId}/acknowledge");
+
+    public Task<(IncidentDto? Result, string? Error)> AddActionAsync(Guid incidentId, AddActionRequest request) =>
+        PostAsync<AddActionRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/actions", request);
+
+    public Task<(IncidentDto? Result, string? Error)> AcknowledgeActionAsync(Guid incidentId, Guid actionId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/actions/{actionId}/acknowledge");
+
+    public Task<(IncidentDto? Result, string? Error)> ResolveActionAsync(Guid incidentId, Guid actionId, string status) =>
+        PostAsync<ResolveActionRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/actions/{actionId}/resolve", new ResolveActionRequest(status));
 
     public Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId) =>
         GetAsync<RouteResponseDto>($"api/tablet/incidents/{incidentId}/route");
@@ -62,6 +74,74 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
 
     public Task<(TabletDeviceDto? Result, string? Error)> GetDeviceAsync() =>
         GetAsync<TabletDeviceDto>("api/tablet/device");
+
+    // Multipart, not JsonContent.Create -- the only endpoint whose body
+    // isn't JSON, so this doesn't reuse PostAsync<TRequest, TResponse>.
+    public async Task<(IncidentAttachmentDto? Result, string? Error)> UploadAttachmentAsync(Guid incidentId, Stream content, string fileName, string contentType)
+    {
+        try
+        {
+            using var request = await BuildRequestAsync(HttpMethod.Post, $"api/tablet/incidents/{incidentId}/attachments");
+            if (request is null) return (default, RevokedError);
+
+            using var form = new MultipartFormDataContent();
+            using var fileContent = new StreamContent(content);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            form.Add(fileContent, "file", fileName);
+            request.Content = form;
+
+            using var response = await httpClient.SendAsync(request);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                await tokenStore.ClearAsync();
+                return (default, RevokedError);
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                var detail = await response.Content.ReadAsStringAsync();
+                return (default, string.IsNullOrWhiteSpace(detail) ? $"Upload failed ({(int)response.StatusCode})." : detail);
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<IncidentAttachmentDto>(JsonOptions);
+            return (result, null);
+        }
+        catch (Exception ex)
+        {
+            return (default, $"Could not reach Muster Hub Command ({ex.Message}).");
+        }
+    }
+
+    // Buffers into a MemoryStream and disposes the response up front --
+    // unlike the other endpoints here, the caller (a thumbnail's
+    // ImageSource.FromStream factory) may re-read this stream more than
+    // once or long after this method returns, so it can't stay tied to
+    // the HttpResponseMessage's own lifetime.
+    public async Task<(Stream? Result, string? Error)> DownloadAttachmentAsync(Guid attachmentId)
+    {
+        try
+        {
+            using var request = await BuildRequestAsync(HttpMethod.Get, $"api/tablet/incident-attachments/{attachmentId}");
+            if (request is null) return (default, RevokedError);
+
+            using var response = await httpClient.SendAsync(request);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                await tokenStore.ClearAsync();
+                return (default, RevokedError);
+            }
+            if (!response.IsSuccessStatusCode)
+                return (default, $"Request failed ({(int)response.StatusCode}).");
+
+            var buffer = new MemoryStream();
+            await response.Content.CopyToAsync(buffer);
+            buffer.Position = 0;
+            return (buffer, null);
+        }
+        catch (Exception ex)
+        {
+            return (default, $"Could not reach Muster Hub Command ({ex.Message}).");
+        }
+    }
 
     private async Task<(T? Result, string? Error)> GetAsync<T>(string path)
     {

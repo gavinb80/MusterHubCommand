@@ -39,6 +39,14 @@ public static class MauiProgram
 		builder.Services.AddTransient<ActiveIncidentsPage>();
 		builder.Services.AddTransient<IncidentDetailViewModel>();
 		builder.Services.AddTransient<IncidentDetailPage>();
+		builder.Services.AddTransient<IncidentHierarchyViewModel>();
+		builder.Services.AddTransient<IncidentHierarchyPage>();
+		builder.Services.AddTransient<PhotoCaptureViewModel>();
+		builder.Services.AddTransient<PhotoCapturePage>();
+		builder.Services.AddTransient<PhotoViewerViewModel>();
+		builder.Services.AddTransient<PhotoViewerPage>();
+		builder.Services.AddTransient<AnnotateMapViewModel>();
+		builder.Services.AddTransient<AnnotateMapPage>();
 		builder.Services.AddTransient<NavigateViewModel>();
 		builder.Services.AddTransient<NavigatePage>();
 
