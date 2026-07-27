@@ -99,20 +99,23 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     // Recomputed wholesale on every poll, same as ApplianceGroups -- no
     // independent scroll state to lose the way Timeline has.
     public List<IncidentActionDto> Actions => Incident?.Actions ?? [];
+    public List<IncidentObjectiveDto> Objectives => Incident?.Objectives ?? [];
 
-    // Overview/Attendance, Tasks & Requests, and Timeline used to all be
-    // visible cards stacked in a fixed-height column -- once there were
-    // three of them the page genuinely didn't fit and Timeline got
-    // squeezed to a sliver. One tab visible at a time, each getting the
+    // Overview/Attendance, Objectives, Tasks & Requests, and Timeline used
+    // to all be visible cards stacked in a fixed-height column -- once
+    // there were three of them the page genuinely didn't fit and Timeline
+    // got squeezed to a sliver. One tab visible at a time, each getting the
     // full remaining height, is the actual fix for that, not another
     // ScrollView patch.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOverviewSelected))]
+    [NotifyPropertyChangedFor(nameof(IsObjectivesSelected))]
     [NotifyPropertyChangedFor(nameof(IsTasksSelected))]
     [NotifyPropertyChangedFor(nameof(IsTimelineSelected))]
     private string selectedTab = "Overview";
 
     public bool IsOverviewSelected => SelectedTab == "Overview";
+    public bool IsObjectivesSelected => SelectedTab == "Objectives";
     public bool IsTasksSelected => SelectedTab == "Tasks";
     public bool IsTimelineSelected => SelectedTab == "Timeline";
 
@@ -121,8 +124,9 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     // Counts of "would you want to know this without switching tabs" --
     // not a generic item count. Recomputed wholesale alongside Actions/
-    // Timeline in RefreshAsync.
+    // Objectives/Timeline in RefreshAsync.
     public int OpenActionsCount => Actions.Count(a => a.Status == "Open");
+    public int OpenObjectivesCount => Objectives.Count(o => o.Status == "Open");
     public int UnacknowledgedUpdateCount => Timeline.Count(e => e.Acknowledgeable && e.AcknowledgedAtUtc is null);
 
     [ObservableProperty]
@@ -136,6 +140,15 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     [ObservableProperty]
     private bool isAddingAction;
+
+    [ObservableProperty]
+    private string objectiveText = string.Empty;
+
+    [ObservableProperty]
+    private bool isRaisingObjective;
+
+    [ObservableProperty]
+    private bool isAddingObjective;
 
     // Which Timeline entry, if any, the shared note box's next Post
     // targets as a reply -- null means Post sends a plain new note.
@@ -374,6 +387,8 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             OnPropertyChanged(nameof(ApplianceGroups));
             OnPropertyChanged(nameof(Actions));
             OnPropertyChanged(nameof(OpenActionsCount));
+            OnPropertyChanged(nameof(Objectives));
+            OnPropertyChanged(nameof(OpenObjectivesCount));
             SyncTimeline(BuildTimeline(result));
             OnPropertyChanged(nameof(HasLocation));
             OnPropertyChanged(nameof(ShowMap));
@@ -578,6 +593,99 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
                 OnPropertyChanged(nameof(Actions));
                 OnPropertyChanged(nameof(OpenActionsCount));
                 SyncTimeline(BuildTimeline(result));
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleAddingObjective() => IsAddingObjective = !IsAddingObjective;
+
+    // No SyncTimeline call anywhere in these three -- unlike every Action
+    // command above, an objective's status change never lands in the
+    // Timeline, so there's nothing there to re-sync.
+    [RelayCommand]
+    private async Task RaiseObjectiveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ObjectiveText) || IsRaisingObjective) return;
+
+        IsRaisingObjective = true;
+        try
+        {
+            var (result, error) = await apiClient.AddObjectiveAsync(IncidentId, ObjectiveText.Trim());
+
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is null)
+            {
+                ErrorMessage = error ?? "Couldn't add that objective. Try again.";
+                return;
+            }
+
+            ErrorMessage = string.Empty;
+            Incident = result;
+            OnPropertyChanged(nameof(Objectives));
+            OnPropertyChanged(nameof(OpenObjectivesCount));
+            ObjectiveText = string.Empty;
+            IsAddingObjective = false;
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+            ErrorMessage = "Something went wrong adding that objective.";
+        }
+        finally
+        {
+            IsRaisingObjective = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task AchieveObjectiveAsync(Guid objectiveId)
+    {
+        try
+        {
+            var (result, error) = await apiClient.AchieveObjectiveAsync(IncidentId, objectiveId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                OnPropertyChanged(nameof(Objectives));
+                OnPropertyChanged(nameof(OpenObjectivesCount));
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ReopenObjectiveAsync(Guid objectiveId)
+    {
+        try
+        {
+            var (result, error) = await apiClient.ReopenObjectiveAsync(IncidentId, objectiveId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                OnPropertyChanged(nameof(Objectives));
+                OnPropertyChanged(nameof(OpenObjectivesCount));
             }
         }
         catch (Exception ex)

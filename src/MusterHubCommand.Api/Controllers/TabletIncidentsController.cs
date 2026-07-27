@@ -116,6 +116,38 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
+    [HttpPost("{id}/objectives")]
+    public async Task<ActionResult<IncidentDto>> AddObjective(Guid id, AddObjectiveRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Text)) return BadRequest("Text is required.");
+
+        var updated = await incidentService.RaiseObjectiveAsync(
+            OrganisationId, id, request.Text.Trim(), IncidentUpdateSource.Crew, DeviceCallsign!, null);
+        return Ok(updated!.ToDto());
+    }
+
+    [HttpPost("{id}/objectives/{objectiveId}/achieve")]
+    public async Task<ActionResult<IncidentDto>> AchieveObjective(Guid id, Guid objectiveId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        var updated = await incidentService.AchieveObjectiveAsync(OrganisationId, id, objectiveId, DeviceCallsign!);
+        return Ok((updated ?? incident).ToDto());
+    }
+
+    [HttpPost("{id}/objectives/{objectiveId}/reopen")]
+    public async Task<ActionResult<IncidentDto>> ReopenObjective(Guid id, Guid objectiveId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        var updated = await incidentService.ReopenObjectiveAsync(OrganisationId, id, objectiveId);
+        return Ok((updated ?? incident).ToDto());
+    }
+
     // From this device's own last-reported GPS to the incident, using
     // whatever VehicleProfile this appliance is set up with in Setup.
     [HttpGet("{id}/route")]

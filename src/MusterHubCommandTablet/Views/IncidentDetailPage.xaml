@@ -132,6 +132,9 @@
                         <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
                             <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
                         </DataTrigger>
+                        <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Objectives">
+                            <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                        </DataTrigger>
                         <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
                             <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                         </DataTrigger>
@@ -140,6 +143,36 @@
                         </DataTrigger>
                     </Label.Triggers>
                 </Label>
+
+                <HorizontalStackLayout Spacing="4">
+                    <Label Text="Objectives" FontAttributes="Bold" FontSize="16" VerticalOptions="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SelectTabCommand}" CommandParameter="Objectives" />
+                        </Label.GestureRecognizers>
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Objectives">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                    <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{StaticResource Gray400}">
+                        <Label Text="{Binding OpenObjectivesCount}" Style="{StaticResource StatusPillLabel}" FontSize="12" />
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding OpenObjectivesCount}" Value="0">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                    </Border>
+                </HorizontalStackLayout>
 
                 <HorizontalStackLayout Spacing="4">
                     <Label Text="Tasks &amp; Requests" FontAttributes="Bold" FontSize="16" VerticalOptions="Center">
@@ -151,6 +184,9 @@
                                 <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
                             </DataTrigger>
                             <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Objectives">
                                 <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                             </DataTrigger>
                             <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
@@ -178,6 +214,9 @@
                                 <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
                             </DataTrigger>
                             <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Objectives">
                                 <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                             </DataTrigger>
                             <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
@@ -241,6 +280,79 @@
                                 </DataTemplate>
                             </CollectionView.ItemTemplate>
                         </CollectionView>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+            </ScrollView>
+
+            <!-- Objectives tab. Distinct from Tasks & Requests/Timeline by
+                 design: an objective's status change never lands in the
+                 Timeline, unlike every Action status change. No Kind
+                 toggle/assignee/sector here: an objective belongs to the
+                 incident as a whole. -->
+            <ScrollView Grid.Row="1" IsVisible="{Binding IsObjectivesSelected}">
+            <VerticalStackLayout Spacing="16">
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" Text="Objectives" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="+ Add" Command="{Binding ToggleAddingObjectiveCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                        </Grid>
+                        <Label Text="No objectives set yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Objectives, Converter={StaticResource CollectionEmptyConverter}}" />
+
+                        <CollectionView ItemsSource="{Binding Objectives}" SelectionMode="None">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:IncidentObjectiveDto">
+                                    <Border Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="0,0,0,0" Padding="0,10">
+                                        <VerticalStackLayout Spacing="4">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <VerticalStackLayout Grid.Column="0" Spacing="1">
+                                                    <Label Text="{Binding Text}" FontSize="15" />
+                                                    <Label Text="{Binding RaisedByName, StringFormat='Raised by {0}'}" Style="{StaticResource CaptionLabel}" />
+                                                </VerticalStackLayout>
+                                                <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}" VerticalOptions="Start">
+                                                    <Label Text="{Binding Status}" Style="{StaticResource StatusPillLabel}" FontSize="13" />
+                                                </Border>
+                                            </Grid>
+                                            <HorizontalStackLayout Spacing="12">
+                                                <Button
+                                                    Text="Mark achieved"
+                                                    Command="{Binding BindingContext.AchieveObjectiveCommand, Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    FontSize="13" Padding="10,4" HeightRequest="30">
+                                                    <Button.Triggers>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Achieved">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                    </Button.Triggers>
+                                                </Button>
+                                                <Button
+                                                    Text="Reopen"
+                                                    Command="{Binding BindingContext.ReopenObjectiveCommand, Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    FontSize="13" Padding="10,4" HeightRequest="30">
+                                                    <Button.Triggers>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Open">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                    </Button.Triggers>
+                                                </Button>
+                                            </HorizontalStackLayout>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingObjective}">
+                            <Entry Placeholder="What are we trying to achieve?" Text="{Binding ObjectiveText}" MaxLength="500" />
+                            <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalOptions="End">
+                                <Button Grid.Column="0" Text="Cancel" Command="{Binding ToggleAddingObjectiveCommand}" Style="{StaticResource SecondaryButton}" />
+                                <Button Grid.Column="1" Text="Add" Command="{Binding RaiseObjectiveCommand}" IsEnabled="{Binding IsRaisingObjective, Converter={StaticResource InvertedBoolConverter}}" />
+                            </Grid>
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>

@@ -26,6 +26,17 @@ public record IncidentUpdateDto(
     DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName,
     Guid? ReplyToUpdateId, DateTimeOffset CreatedAtUtc);
 
+// RaisedByName/AchievedByName are always resolved server-side from the
+// caller's own session (the signed-in operator, or a tablet's
+// DeviceCallsign) -- never caller-supplied, unlike
+// IncidentActionDto.raisedByName. No Kind/AssignedToName/SectorId here:
+// an objective belongs to the incident as a whole, not a person, appliance
+// or category.
+public record IncidentObjectiveDto(
+    Guid Id, string Text, IncidentObjectiveStatus Status,
+    IncidentUpdateSource Source, string RaisedByName, Guid? RaisedByEmployeeId,
+    DateTimeOffset? AchievedAtUtc, string? AchievedByName, DateTimeOffset CreatedAtUtc);
+
 // AssignedToName/RaisedByName are always the display name -- resolved
 // server-side the same way IncidentSectorDto.personInChargeName is.
 public record IncidentActionDto(
@@ -47,7 +58,7 @@ public record IncidentDto(
     Guid? CloseTypeId, string? CloseTypeCode, string? CloseTypeName,
     string? CloseActionsTaken, string? CloseOutcome,
     List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates,
-    List<IncidentSectorDto> Sectors, List<IncidentActionDto> Actions,
+    List<IncidentSectorDto> Sectors, List<IncidentObjectiveDto> Objectives, List<IncidentActionDto> Actions,
     List<IncidentAttachmentDto> Attachments);
 
 // UploadedByName is always resolved server-side -- the uploading
@@ -130,6 +141,13 @@ public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId, Guid? Repl
 // have.
 public record AcknowledgeUpdateRequest(string? AcknowledgedByName);
 
+// Only Text -- RaisedByName/RaisedByEmployeeId are resolved server-side by
+// the caller (see IncidentObjective's own comment), not accepted here the
+// way AddActionRequest.RaisedByName is. No Achieve/ReopenObjectiveRequest
+// types exist: both endpoints take an empty POST body, same shape as
+// TabletIncidentsController's own start-navigation endpoint.
+public record AddObjectiveRequest(string Text);
+
 // Kind isn't direction-locked -- both the control room and tablet can
 // raise either kind, see IncidentAction's own comment. RaisedByName is
 // caller-supplied, same trust model as AddIncidentUpdateRequest.AuthorName
@@ -167,6 +185,11 @@ public static class IncidentMapping
                 s.Id, s.Name, s.SortOrder, s.ParentId,
                 s.PersonInChargeEmployeeId,
                 s.PersonInChargeEmployeeId is not null ? s.PersonInChargeEmployee?.DisplayName : s.PersonInChargeName))
+            .ToList(),
+        incident.Objectives.OrderBy(o => o.CreatedAtUtc)
+            .Select(o => new IncidentObjectiveDto(
+                o.Id, o.Text, o.Status, o.Source, o.RaisedByName, o.RaisedByEmployeeId,
+                o.AchievedAtUtc, o.AchievedByName, o.CreatedAtUtc))
             .ToList(),
         incident.Actions.OrderBy(a => a.CreatedAtUtc)
             .Select(a => new IncidentActionDto(

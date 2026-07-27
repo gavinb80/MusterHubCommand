@@ -11,8 +11,8 @@ import { PersonPicker } from "../components/PersonPicker";
 import { CloseIncidentModal } from "../components/CloseIncidentModal";
 import { AnnotateMapModal } from "../components/AnnotateMapModal";
 import type {
-  AddActionRequest, AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, EmployeeDto, GeocodeResponseDto,
-  IncidentActionKind, IncidentActionStatus, IncidentAttachmentDto, IncidentDto, IncidentUpdateType,
+  AddActionRequest, AddIncidentUpdateRequest, AddObjectiveRequest, ApplianceStatus, DeviceDto, EmployeeDto, GeocodeResponseDto,
+  IncidentActionKind, IncidentActionStatus, IncidentAttachmentDto, IncidentDto, IncidentObjectiveStatus, IncidentUpdateType,
   MeResponse, OrganisationSettingsDto, ResourceKind, RouteResponseDto, SetApplianceEntry,
 } from "../api/types";
 
@@ -591,6 +591,130 @@ function TimelinePanel({ incident }: { incident: IncidentDto }) {
   );
 }
 
+const OBJECTIVE_STATUS_STYLES: Record<IncidentObjectiveStatus, string> = {
+  Open: "bg-status-mobilised/15 text-status-mobilised",
+  Achieved: "bg-status-on-scene/15 text-status-on-scene",
+};
+
+// Distinct from Tasks & Requests/Timeline by design -- an objective's
+// status change never writes a Timeline entry (see the API's own
+// IncidentService comment). No PersonPicker/sector select on the add
+// form: raisedByName/achievedByName are always resolved server-side, and
+// an objective has no assignee.
+function ObjectivesPanel({ incident }: { incident: IncidentDto }) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
+
+  const addMutation = useMutation({
+    mutationFn: (request: AddObjectiveRequest) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/objectives`, { method: "POST", body: JSON.stringify(request) }),
+    onSuccess: () => { invalidate(); setText(""); setAdding(false); },
+    onError: (error) => showToast(error.message, "error"),
+  });
+  const achieveMutation = useMutation({
+    mutationFn: (objectiveId: string) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/objectives/${objectiveId}/achieve`, { method: "POST" }),
+    onSuccess: () => invalidate(),
+    onError: (error) => showToast(error.message, "error"),
+  });
+  const reopenMutation = useMutation({
+    mutationFn: (objectiveId: string) =>
+      apiFetch<IncidentDto>(`/incidents/${incident.id}/objectives/${objectiveId}/reopen`, { method: "POST" }),
+    onSuccess: () => invalidate(),
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  return (
+    <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
+      <div className="flex items-center justify-between">
+        <h2 className="text-card-title font-semibold text-(--content-primary)">Objectives</h2>
+        {!adding && (
+          <button type="button" onClick={() => setAdding(true)} className="text-body text-brand-primary">
+            + Add
+          </button>
+        )}
+      </div>
+
+      {incident.objectives.length === 0 && !adding && (
+        <p className="mt-3 text-body text-(--content-secondary)">No objectives set yet.</p>
+      )}
+
+      <div className="mt-3 flex flex-col gap-3">
+        {incident.objectives.map((o) => (
+          <div key={o.id} className="rounded-lg border border-(--surface-border) p-3">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-body text-(--content-primary)">{o.text}</p>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-caption font-semibold ${OBJECTIVE_STATUS_STYLES[o.status]}`}>
+                {o.status}
+              </span>
+            </div>
+            <p className="text-caption text-(--content-secondary)">Raised by {o.raisedByName}</p>
+            <div className="mt-2 flex items-center gap-3 text-caption">
+              {o.status === "Open" && (
+                <button
+                  type="button"
+                  disabled={achieveMutation.isPending}
+                  onClick={() => achieveMutation.mutate(o.id)}
+                  className="font-semibold text-status-on-scene disabled:opacity-60"
+                >
+                  Mark achieved
+                </button>
+              )}
+              {o.status === "Achieved" && (
+                <>
+                  <span className="text-(--content-secondary)">
+                    Achieved by {o.achievedByName}{o.achievedAtUtc && ` at ${new Date(o.achievedAtUtc).toLocaleTimeString()}`}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={reopenMutation.isPending}
+                    onClick={() => reopenMutation.mutate(o.id)}
+                    className="font-semibold text-brand-primary disabled:opacity-60"
+                  >
+                    Reopen
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {adding && (
+        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-(--surface-border) p-3">
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="What are we trying to achieve?"
+            className="rounded-lg border border-(--surface-border) px-2 py-1 text-body"
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setAdding(false); setText(""); }}
+              className="rounded-lg px-3 py-1.5 text-body text-(--content-secondary)"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!text.trim() || addMutation.isPending}
+              onClick={() => addMutation.mutate({ text: text.trim() })}
+              className="rounded-lg bg-brand-primary px-3 py-1.5 text-body font-semibold text-white disabled:opacity-60"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const ACTION_KIND_LABELS: Record<IncidentActionKind, string> = {
   Task: "Task",
   ResourceRequest: "Resource Request",
@@ -927,12 +1051,11 @@ function formatDuration(seconds: number) {
   return minutes < 1 ? "under a minute" : `${minutes} min`;
 }
 
-// Which appliance to route from, plus every device at this station with a
-// known position -- so the map shows "where are our own appliances" even
-// before an operator has picked one to check a route against.
+// Which appliance to route from, picked among every device at this station
+// with a known position.
 function RoutingPanel({ incident, onRouteChange }: {
   incident: IncidentDto;
-  onRouteChange: (route: { appliances: DeviceDto[]; routePoints: [number, number][] | null }) => void;
+  onRouteChange: (route: { routePoints: [number, number][] | null }) => void;
 }) {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
 
@@ -955,7 +1078,7 @@ function RoutingPanel({ incident, onRouteChange }: {
     const points: [number, number][] | null = routeQuery.data?.available && routeQuery.data.points
       ? routeQuery.data.points.map((p) => [p.latitude, p.longitude])
       : null;
-    onRouteChange({ appliances: stationDevices, routePoints: points });
+    onRouteChange({ routePoints: points });
   }, [routeQuery.data, stationDevices.length]);
 
   if (stationDevices.length === 0) {
@@ -995,8 +1118,8 @@ function RoutingPanel({ incident, onRouteChange }: {
 // picker doubles as a way to correct a wrong pin later.
 function LocationPanel({ incident, route, onRouteChange }: {
   incident: IncidentDto;
-  route: { appliances: DeviceDto[]; routePoints: [number, number][] | null };
-  onRouteChange: (route: { appliances: DeviceDto[]; routePoints: [number, number][] | null }) => void;
+  route: { routePoints: [number, number][] | null };
+  onRouteChange: (route: { routePoints: [number, number][] | null }) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftLat, setDraftLat] = useState<number | null>(incident.latitude);
@@ -1050,6 +1173,13 @@ function LocationPanel({ incident, route, onRouteChange }: {
 
   const hasLocation = incident.latitude != null && incident.longitude != null;
 
+  // The incident's own attending appliances, not route.appliances -- that's
+  // the station's available devices used to preview a route from one of
+  // them, a different thing from "who's actually here."
+  const attendingAppliances = incident.appliances
+    .filter((a) => a.latitude != null && a.longitude != null)
+    .map((a) => ({ label: a.callsign, status: a.status, latitude: a.latitude!, longitude: a.longitude! }));
+
   if (editing) {
     return (
       <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card flex flex-col gap-3">
@@ -1102,7 +1232,7 @@ function LocationPanel({ incident, route, onRouteChange }: {
           latitude={incident.latitude!}
           longitude={incident.longitude!}
           label={incident.address ?? incident.incidentType}
-          appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
+          appliances={attendingAppliances}
           routePoints={route.routePoints ?? undefined}
           geofenceRadiusMeters={geofenceRadiusMeters}
           onAnnotate={() => setAnnotateOpen(true)}
@@ -1116,7 +1246,7 @@ function LocationPanel({ incident, route, onRouteChange }: {
         latitude={incident.latitude!}
         longitude={incident.longitude!}
         label={incident.address ?? incident.incidentType}
-        appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
+        appliances={attendingAppliances}
         geofenceRadiusMeters={geofenceRadiusMeters}
       />
       <div className="flex items-center justify-between">
@@ -1137,7 +1267,7 @@ function LocationPanel({ incident, route, onRouteChange }: {
   );
 }
 
-type DetailTab = "overview" | "tasks" | "timeline" | "photos";
+type DetailTab = "overview" | "objectives" | "tasks" | "timeline" | "photos";
 
 // Plain buttons, not a component library -- this is the same idea as
 // every other bit of UI in this file, just toggling which panel below
@@ -1208,9 +1338,7 @@ export function IncidentDetailPage() {
     onError: (error) => showToast(error.message, "error"),
   });
 
-  const [route, setRoute] = useState<{ appliances: DeviceDto[]; routePoints: [number, number][] | null }>({
-    appliances: [], routePoints: null,
-  });
+  const [route, setRoute] = useState<{ routePoints: [number, number][] | null }>({ routePoints: null });
 
   if (incidentQuery.isLoading) return <p className="text-body text-(--content-secondary)">Loading...</p>;
   const incident = incidentQuery.data;
@@ -1269,6 +1397,7 @@ export function IncidentDetailPage() {
       <LocationPanel incident={incident} route={route} onRouteChange={setRoute} />
 
       {(() => {
+        const openObjectivesCount = incident.objectives.filter((o) => o.status === "Open").length;
         const openActionsCount = incident.actions.filter((a) => a.status === "Open").length;
         const unacknowledged = incident.updates.filter(
           (u) => (u.updateType === "General" || u.updateType === "Hazard") && !u.acknowledgedAtUtc,
@@ -1276,6 +1405,12 @@ export function IncidentDetailPage() {
         return (
           <div className="flex gap-6 border-b border-(--surface-border)">
             <TabButton label="Overview" active={activeTab === "overview"} onClick={() => setActiveTab("overview")} />
+            <TabButton
+              label="Objectives"
+              active={activeTab === "objectives"}
+              badge={openObjectivesCount}
+              onClick={() => setActiveTab("objectives")}
+            />
             <TabButton
               label="Tasks & Requests"
               active={activeTab === "tasks"}
@@ -1300,6 +1435,7 @@ export function IncidentDetailPage() {
       })()}
 
       {activeTab === "overview" && <AttendancePanel incident={incident} />}
+      {activeTab === "objectives" && <ObjectivesPanel incident={incident} />}
       {activeTab === "tasks" && <ActionsPanel incident={incident} />}
       {activeTab === "timeline" && <TimelinePanel incident={incident} />}
       {activeTab === "photos" && <PhotosPanel incident={incident} />}

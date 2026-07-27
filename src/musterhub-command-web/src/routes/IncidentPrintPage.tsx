@@ -136,6 +136,17 @@ export function IncidentPrintPage() {
         </>
       )}
 
+      <h2 className="mt-8 border-b border-(--surface-border) pb-1 text-card-title font-semibold">Objectives</h2>
+      {incident.objectives.length === 0 && <p className="mt-2 text-body text-(--content-secondary)">None set.</p>}
+      <ul className="mt-2 flex flex-col gap-2">
+        {incident.objectives.map((o) => (
+          <li key={o.id} className="text-body">
+            {o.text} &middot; {o.status}
+            {o.status === "Achieved" && o.achievedByName && `, achieved by ${o.achievedByName}`}
+          </li>
+        ))}
+      </ul>
+
       <h2 className="mt-8 border-b border-(--surface-border) pb-1 text-card-title font-semibold">Attendance</h2>
       {sectorGroups.length === 0 && <p className="mt-2 text-body text-(--content-secondary)">No appliances attended.</p>}
       {sectorGroups.map((group) => (

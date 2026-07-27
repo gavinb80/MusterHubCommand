@@ -23,6 +23,15 @@ public record IncidentUpdateDto(
     DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName,
     Guid? ReplyToUpdateId, DateTimeOffset CreatedAtUtc);
 
+// RaisedByName/AchievedByName are always the caller's own resolved
+// identity -- see the API's own IncidentObjectiveDto comment.
+public record IncidentObjectiveDto(
+    Guid Id, string Text, string Status, string Source,
+    string RaisedByName, Guid? RaisedByEmployeeId,
+    DateTimeOffset? AchievedAtUtc, string? AchievedByName, DateTimeOffset CreatedAtUtc);
+
+public record AddObjectiveRequest(string Text);
+
 // AssignedToName/RaisedByName are always the display name -- resolved
 // server-side the same way IncidentSectorDto.PersonInChargeName is.
 public record IncidentActionDto(
@@ -38,7 +47,7 @@ public record IncidentDto(
     Guid OrgUnitId, string OrgUnitName, string Status,
     DateTimeOffset StartedAtUtc, DateTimeOffset? ClosedAtUtc, DateTimeOffset UpdatedAtUtc,
     List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates,
-    List<IncidentSectorDto> Sectors, List<IncidentActionDto> Actions,
+    List<IncidentSectorDto> Sectors, List<IncidentObjectiveDto> Objectives, List<IncidentActionDto> Actions,
     List<IncidentAttachmentDto> Attachments);
 
 public record IncidentAttachmentDto(
