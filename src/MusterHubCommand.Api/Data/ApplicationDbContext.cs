@@ -23,6 +23,8 @@ public class ApplicationDbContext(
     public DbSet<IncidentUpdate> IncidentUpdates => Set<IncidentUpdate>();
     public DbSet<IncidentSector> IncidentSectors => Set<IncidentSector>();
     public DbSet<IncidentAction> IncidentActions => Set<IncidentAction>();
+    public DbSet<IncidentCloseType> IncidentCloseTypes => Set<IncidentCloseType>();
+    public DbSet<IncidentAttachment> IncidentAttachments => Set<IncidentAttachment>();
     public DbSet<IntegrationApiKey> IntegrationApiKeys => Set<IntegrationApiKey>();
     public DbSet<EmployeeStationAssignment> EmployeeStationAssignments => Set<EmployeeStationAssignment>();
     public DbSet<VehicleProfile> VehicleProfiles => Set<VehicleProfile>();
@@ -85,10 +87,15 @@ public class ApplicationDbContext(
             // number scheme.
             e.HasIndex(i => new { i.OrganisationId, i.ExternalReference }).IsUnique();
             e.HasOne(i => i.OrgUnit).WithMany().HasForeignKey(i => i.OrgUnitId).OnDelete(DeleteBehavior.Restrict);
+            // Restrict, not SetNull -- a retired close type shouldn't
+            // silently rewrite the record of what an already-closed
+            // incident was actually closed against.
+            e.HasOne(i => i.CloseType).WithMany().HasForeignKey(i => i.CloseTypeId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(i => i.Appliances).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Updates).WithOne(u => u.Incident).HasForeignKey(u => u.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Sectors).WithOne(s => s.Incident).HasForeignKey(s => s.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Actions).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(i => i.Attachments).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<IncidentUpdate>(e =>
@@ -128,6 +135,12 @@ public class ApplicationDbContext(
             // detached from the incident's attendance.
             e.HasOne(s => s.Parent).WithMany().HasForeignKey(s => s.ParentId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(s => s.PersonInChargeEmployee).WithMany().HasForeignKey(s => s.PersonInChargeEmployeeId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<IncidentAttachment>(e =>
+        {
+            e.HasOne(a => a.UploadedByEmployee).WithMany().HasForeignKey(a => a.UploadedByEmployeeId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(a => a.UploadedByDevice).WithMany().HasForeignKey(a => a.UploadedByDeviceId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<IntegrationApiKey>(e =>

@@ -35,5 +35,7 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>MusterHub Command shows this appliance's position and works out a route to the incident.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>MusterHub Command lets you attach a photo to an incident from the camera.</string>
 </dict>
 </plist>

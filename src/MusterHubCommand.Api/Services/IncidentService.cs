@@ -36,8 +36,11 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             .Include(i => i.Appliances).ThenInclude(a => a.OfficerInChargeEmployee)
             .Include(i => i.Updates)
             .Include(i => i.OrgUnit)
+            .Include(i => i.CloseType)
             .Include(i => i.Sectors).ThenInclude(s => s.PersonInChargeEmployee)
             .Include(i => i.Actions).ThenInclude(a => a.AssignedToEmployee)
+            .Include(i => i.Attachments).ThenInclude(a => a.UploadedByEmployee)
+            .Include(i => i.Attachments).ThenInclude(a => a.UploadedByDevice)
             .Where(i => i.OrganisationId == organisationId);
 
     public async Task<Incident> CreateOrUpsertAsync(Guid organisationId, CreateIncidentRequest request, CancellationToken ct = default)
@@ -110,6 +113,29 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         if (request.StationCode is not null) incident.OrgUnit = await LoadOrgUnitAsync(incident.OrgUnitId, ct);
+        return incident;
+    }
+
+    public async Task<Incident?> CloseAsync(Guid organisationId, Guid incidentId, CloseIncidentRequest request, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        if (request.CloseTypeId is { } closeTypeId)
+        {
+            var closeTypeExists = await db.IncidentCloseTypes.IgnoreQueryFilters()
+                .AnyAsync(t => t.Id == closeTypeId && t.OrganisationId == organisationId, ct);
+            if (!closeTypeExists) throw new IncidentValidationException($"No close type found with id '{closeTypeId}'.");
+        }
+
+        incident.Status = IncidentStatus.Closed;
+        incident.ClosedAtUtc ??= DateTimeOffset.UtcNow;
+        incident.CloseTypeId = request.CloseTypeId;
+        incident.CloseActionsTaken = request.ActionsTaken;
+        incident.CloseOutcome = request.Outcome;
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        if (request.CloseTypeId is not null) await db.Entry(incident).Reference(i => i.CloseType).LoadAsync(ct);
         return incident;
     }
 

@@ -35,13 +35,28 @@ public record IncidentActionDto(
     DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName,
     DateTimeOffset? ResolvedAtUtc, string? ResolvedByName, DateTimeOffset CreatedAtUtc);
 
+// CloseTypeCode/CloseTypeName are always the resolved values from
+// IncidentCloseType when CloseTypeId is set -- same "ID + server-resolved
+// display" pattern as OfficerInChargeName/PersonInChargeName elsewhere in
+// this file, so clients never need a second lookup just to show it.
 public record IncidentDto(
     Guid Id, string ExternalReference, string IncidentType, string? Description,
     string? Address, double? Latitude, double? Longitude,
     Guid OrgUnitId, string OrgUnitName, IncidentStatus Status,
     DateTimeOffset StartedAtUtc, DateTimeOffset? ClosedAtUtc, DateTimeOffset UpdatedAtUtc,
+    Guid? CloseTypeId, string? CloseTypeCode, string? CloseTypeName,
+    string? CloseActionsTaken, string? CloseOutcome,
     List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates,
-    List<IncidentSectorDto> Sectors, List<IncidentActionDto> Actions);
+    List<IncidentSectorDto> Sectors, List<IncidentActionDto> Actions,
+    List<IncidentAttachmentDto> Attachments);
+
+// UploadedByName is always resolved server-side -- the uploading
+// employee's DisplayName for a web upload, or the uploading device's
+// Label for a tablet upload (exactly one of UploadedByEmployeeId/
+// UploadedByDeviceId is ever set, see IncidentAttachment's own comment).
+public record IncidentAttachmentDto(
+    Guid Id, string FileName, string ContentType, long SizeBytes,
+    DateTimeOffset UploadedAtUtc, string? UploadedByName);
 
 // The list view -- no appliances/updates payload, kept light for a
 // station's "what's active" screen (tablet home and control room's list).
@@ -62,6 +77,17 @@ public record CreateIncidentRequest(
 public record UpdateIncidentRequest(
     string? IncidentType, string? Description, string? Address,
     double? Latitude, double? Longitude, string? StationCode, IncidentStatus? Status);
+
+// Closing with a structured summary is its own endpoint (POST /{id}/close),
+// mirroring Cancel's own DELETE rather than folding into the generic PATCH
+// -- same IncidentCommander gate as PATCH's existing Status=Closed branch.
+// All fields optional: a summary is a good practice, not a hard gate on
+// being able to close an incident at all. CloseTypeId is a reference into
+// the org's own managed classification scheme, not free text.
+public record CloseIncidentRequest(Guid? CloseTypeId, string? ActionsTaken, string? Outcome);
+
+public record IncidentCloseTypeDto(Guid Id, string Code, string Name);
+public record SaveIncidentCloseTypeRequest(string Code, string Name);
 
 public record SetApplianceEntry(string Callsign, ApplianceStatus Status);
 public record SetAppliancesRequest(List<SetApplianceEntry> Appliances);
@@ -124,6 +150,8 @@ public static class IncidentMapping
         incident.Address, incident.Latitude, incident.Longitude,
         incident.OrgUnitId, incident.OrgUnit?.Name ?? "", incident.Status,
         incident.StartedAtUtc, incident.ClosedAtUtc, incident.UpdatedAtUtc,
+        incident.CloseTypeId, incident.CloseType?.Code, incident.CloseType?.Name,
+        incident.CloseActionsTaken, incident.CloseOutcome,
         incident.Appliances.OrderBy(a => a.Callsign)
             .Select(a => new IncidentApplianceDto(
                 a.Id, a.Callsign, a.Status, a.ResourceKind, a.SectorId,
@@ -146,6 +174,11 @@ public static class IncidentMapping
                 a.AssignedToEmployeeId,
                 a.AssignedToEmployeeId is not null ? a.AssignedToEmployee?.DisplayName : a.AssignedToName,
                 a.SectorId, a.AcknowledgedAtUtc, a.AcknowledgedByName, a.ResolvedAtUtc, a.ResolvedByName, a.CreatedAtUtc))
+            .ToList(),
+        incident.Attachments.OrderByDescending(a => a.UploadedAtUtc)
+            .Select(a => new IncidentAttachmentDto(
+                a.Id, a.FileName, a.ContentType, a.SizeBytes, a.UploadedAtUtc,
+                a.UploadedByEmployee?.DisplayName ?? a.UploadedByDevice?.Label))
             .ToList());
 
     public static IncidentSummaryDto ToSummaryDto(this Incident incident) => new(

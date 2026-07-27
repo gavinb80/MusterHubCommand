@@ -43,6 +43,22 @@ builder.Services.AddScoped<IntegrationApiKeyValidator>();
 builder.Services.AddScoped<CoreDirectoryImportService>();
 builder.Services.AddHttpClient<ICoreDirectoryClient, HttpCoreDirectoryClient>();
 
+// Attachment bytes: Azure Blob via managed identity when Storage:BlobEndpoint
+// is set (prod), plain local files otherwise (dev/tests) -- no connection
+// string, no secret, either way. Same pattern as Rota/Skills.
+var blobEndpoint = builder.Configuration["Storage:BlobEndpoint"];
+if (!string.IsNullOrWhiteSpace(blobEndpoint))
+{
+    var containerName = builder.Configuration["Storage:Container"] ?? "incident-media";
+    builder.Services.AddSingleton<IFileStorage>(new AzureBlobFileStorage(blobEndpoint, containerName));
+}
+else
+{
+    var localPath = builder.Configuration["Storage:LocalPath"]
+        ?? Path.Combine(builder.Environment.ContentRootPath, "attachments");
+    builder.Services.AddSingleton<IFileStorage>(new LocalFileStorage(localPath));
+}
+
 // Loads its routerdb once and stays a singleton for the app's lifetime --
 // deserializing an OSM-derived RouterDb isn't cheap, and Router/RouterDb
 // are meant to be shared across requests.

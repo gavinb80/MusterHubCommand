@@ -79,6 +79,62 @@ public class CommandOperatorTierTests(CommandApiFactory factory)
     }
 
     [Fact]
+    public async Task Closing_with_a_summary_requires_Incident_Commander_and_the_fields_persist()
+    {
+        var closeTypeResponse = await _commanderA.PostAsJsonAsync("/api/incident-close-types",
+            new SaveIncidentCloseTypeRequest("RTC.1", "Overturned vehicle"));
+        var closeType = (await closeTypeResponse.Content.ReadFromJsonAsync<IncidentCloseTypeDto>(ClientExtensions.Json))!;
+
+        await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-CLOSE-SUMMARY-1"));
+        var incident = await GetByReferenceAsync("TIER-CLOSE-SUMMARY-1");
+
+        var deniedForSupport = await _supportA.PostAsJsonAsync($"/api/incidents/{incident.Id}/close",
+            new CloseIncidentRequest(closeType.Id, "Extricated casualty", "Casualty conveyed to hospital"));
+        Assert.Equal(HttpStatusCode.Forbidden, deniedForSupport.StatusCode);
+
+        var allowedForCommander = await _commanderA.PostAsJsonAsync($"/api/incidents/{incident.Id}/close",
+            new CloseIncidentRequest(closeType.Id, "Extricated casualty", "Casualty conveyed to hospital"));
+        Assert.Equal(HttpStatusCode.OK, allowedForCommander.StatusCode);
+        var after = (await allowedForCommander.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
+        Assert.Equal(IncidentStatus.Closed, after.Status);
+        Assert.NotNull(after.ClosedAtUtc);
+        Assert.Equal(closeType.Id, after.CloseTypeId);
+        Assert.Equal("RTC.1", after.CloseTypeCode);
+        Assert.Equal("Overturned vehicle", after.CloseTypeName);
+        Assert.Equal("Extricated casualty", after.CloseActionsTaken);
+        Assert.Equal("Casualty conveyed to hospital", after.CloseOutcome);
+
+        // round-trips through a fresh GET, not just the write response
+        var reread = await GetByReferenceAsync("TIER-CLOSE-SUMMARY-1");
+        Assert.Equal("RTC.1", reread.CloseTypeCode);
+    }
+
+    [Fact]
+    public async Task Closing_with_no_summary_fields_is_allowed_a_summary_is_optional()
+    {
+        await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-CLOSE-NOSUMMARY-1"));
+        var incident = await GetByReferenceAsync("TIER-CLOSE-NOSUMMARY-1");
+
+        var response = await _commanderA.PostAsJsonAsync($"/api/incidents/{incident.Id}/close",
+            new CloseIncidentRequest(null, null, null));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var after = (await response.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
+        Assert.Equal(IncidentStatus.Closed, after.Status);
+        Assert.Null(after.CloseTypeId);
+    }
+
+    [Fact]
+    public async Task Closing_with_an_unknown_close_type_id_is_a_clean_400_not_a_500()
+    {
+        await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-CLOSE-BADTYPE-1"));
+        var incident = await GetByReferenceAsync("TIER-CLOSE-BADTYPE-1");
+
+        var response = await _commanderA.PostAsJsonAsync($"/api/incidents/{incident.Id}/close",
+            new CloseIncidentRequest(Guid.NewGuid(), null, null));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Patching_a_non_status_field_on_the_same_PATCH_only_needs_Command_Support()
     {
         await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-PATCH-1"));

@@ -32,6 +32,10 @@ public class CommandApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Core:JwksUri", "http://localhost:1/.well-known/jwks.json");
         builder.UseSetting("Core:Issuer", "MusterHub");
         builder.UseSetting("Core:Audience", "MusterHubApp");
+        // Attachment bytes land in LocalFileStorage rooted at a temp dir,
+        // not the real project directory -- same convention as Skills' own
+        // test factory.
+        builder.UseSetting("Storage:LocalPath", Path.Combine(Path.GetTempPath(), "musterhubcommand-test-attachments"));
         // Always configured (see the bottom of this method), so
         // CoreNotificationService.IsConfigured is true for every test, not
         // just NotificationTests -- every incident creation elsewhere in

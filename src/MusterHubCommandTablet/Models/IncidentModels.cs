@@ -38,7 +38,12 @@ public record IncidentDto(
     Guid OrgUnitId, string OrgUnitName, string Status,
     DateTimeOffset StartedAtUtc, DateTimeOffset? ClosedAtUtc, DateTimeOffset UpdatedAtUtc,
     List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates,
-    List<IncidentSectorDto> Sectors, List<IncidentActionDto> Actions);
+    List<IncidentSectorDto> Sectors, List<IncidentActionDto> Actions,
+    List<IncidentAttachmentDto> Attachments);
+
+public record IncidentAttachmentDto(
+    Guid Id, string FileName, string ContentType, long SizeBytes,
+    DateTimeOffset UploadedAtUtc, string? UploadedByName);
 
 public record AddCrewNoteRequest(string Text, Guid? AuthorEmployeeId, Guid? ReplyToUpdateId = null);
 

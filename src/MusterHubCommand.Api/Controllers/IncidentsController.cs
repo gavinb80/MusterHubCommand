@@ -18,11 +18,17 @@ public class IncidentsController(
     IncidentService incidentService,
     ApplicationDbContext db,
     RoutingService routingService,
+    IFileStorage fileStorage,
     ICurrentOrganisationAccessor organisationAccessor,
     ICurrentEmployeeAccessor currentEmployeeAccessor,
     OperatorPermissionChecker operatorChecker)
     : CommandControllerBase(organisationAccessor, currentEmployeeAccessor, operatorChecker)
 {
+    private const long MaxAttachmentBytes = 50 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedAttachmentContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg", "image/png", "image/heic", "image/heif", "image/webp", "application/pdf",
+    };
     [HttpGet]
     public async Task<ActionResult<List<IncidentSummaryDto>>> List([FromQuery] Guid? orgUnitId, [FromQuery] bool activeOnly = true)
     {
@@ -80,6 +86,22 @@ public class IncidentsController(
 
         var updated = await incidentService.CancelAsync(OrganisationId, id);
         return updated is null ? NotFound() : NoContent();
+    }
+
+    // Its own endpoint rather than folded into the generic PATCH above --
+    // same IncidentCommander gate PATCH already applies for Status=Closed,
+    // but this is the one path that also carries the structured close-out.
+    [HttpPost("{id}/close")]
+    public async Task<ActionResult<IncidentDto>> Close(Guid id, CloseIncidentRequest request)
+    {
+        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
+
+        try
+        {
+            var updated = await incidentService.CloseAsync(OrganisationId, id, request);
+            return updated is null ? NotFound() : Ok(updated.ToDto());
+        }
+        catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
     [HttpPut("{id}/appliances")]
@@ -251,5 +273,73 @@ public class IncidentsController(
             incident.Latitude.Value, incident.Longitude.Value, device.VehicleProfile);
 
         return Ok(result is not null ? result.ToDto() : failure!.Value.ToUnavailableDto());
+    }
+
+    [HttpPost("{id}/attachments")]
+    [RequestSizeLimit(MaxAttachmentBytes + 1024)]
+    public async Task<ActionResult<IncidentAttachmentDto>> UploadAttachment(Guid id, IFormFile file)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null) return NotFound();
+
+        if (file.Length == 0) return BadRequest("File is empty.");
+        if (file.Length > MaxAttachmentBytes) return BadRequest("File is too large (max 50MB).");
+        if (!AllowedAttachmentContentTypes.Contains(file.ContentType)) return BadRequest($"Unsupported file type '{file.ContentType}'.");
+
+        var attachment = new IncidentAttachment
+        {
+            OrganisationId = OrganisationId,
+            IncidentId = id,
+            FileName = file.FileName,
+            ContentType = file.ContentType,
+            SizeBytes = file.Length,
+            StoragePath = "",
+            UploadedByEmployeeId = await CurrentEmployeeIdAsync(),
+        };
+        attachment.StoragePath = $"{OrganisationId}/{id}/{attachment.Id}{Path.GetExtension(file.FileName)}";
+
+        await using (var stream = file.OpenReadStream())
+            await fileStorage.SaveAsync(attachment.StoragePath, stream, file.ContentType);
+
+        db.IncidentAttachments.Add(attachment);
+        await db.SaveChangesAsync();
+
+        var employeeName = attachment.UploadedByEmployeeId is { } employeeId
+            ? await db.Employees.IgnoreQueryFilters().Where(e => e.Id == employeeId).Select(e => e.DisplayName).FirstOrDefaultAsync()
+            : null;
+        return Ok(new IncidentAttachmentDto(attachment.Id, attachment.FileName, attachment.ContentType, attachment.SizeBytes, attachment.UploadedAtUtc, employeeName));
+    }
+
+    // Not nested under api/incidents/{id} -- an attachment is looked up by
+    // its own id, same reasoning as api/incident-attachments in Skills.
+    [HttpGet("/api/incident-attachments/{attachmentId}")]
+    public async Task<IActionResult> DownloadAttachment(Guid attachmentId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var attachment = await db.IncidentAttachments.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.Id == attachmentId && a.OrganisationId == OrganisationId);
+        if (attachment is null) return NotFound();
+
+        var stream = await fileStorage.OpenReadAsync(attachment.StoragePath);
+        if (stream is null) return NotFound();
+        return File(stream, attachment.ContentType, attachment.FileName);
+    }
+
+    [HttpDelete("/api/incident-attachments/{attachmentId}")]
+    public async Task<IActionResult> DeleteAttachment(Guid attachmentId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var attachment = await db.IncidentAttachments.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.Id == attachmentId && a.OrganisationId == OrganisationId);
+        if (attachment is null) return NotFound();
+
+        await fileStorage.DeleteAsync(attachment.StoragePath);
+        db.IncidentAttachments.Remove(attachment);
+        await db.SaveChangesAsync();
+        return NoContent();
     }
 }

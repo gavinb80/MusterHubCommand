@@ -20,6 +20,10 @@ dist/
 # dev-all.sh logs + remembered core repo path
 .dev/
 
+# Local dev file storage (LocalFileStorage default path) -- uploaded
+# attachment bytes, not source.
+/src/MusterHubCommand.Api/attachments/
+
 # Editor / OS
 .vs/
 .vscode/

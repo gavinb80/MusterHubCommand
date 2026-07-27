@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MusterHubCommand.Api.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MusterHubCommand.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260726195600_AddIncidentCloseSummary")]
+    partial class AddIncidentCloseSummary
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -46,7 +49,7 @@ namespace MusterHubCommand.Api.Migrations
                     b.HasIndex("EmployeeId")
                         .IsUnique();
 
-                    b.ToTable("CommandOperators", (string)null);
+                    b.ToTable("CommandOperators");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.CoreDirectorySyncConfig", b =>
@@ -70,7 +73,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("CoreDirectorySyncConfigs", (string)null);
+                    b.ToTable("CoreDirectorySyncConfigs");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.Device", b =>
@@ -126,7 +129,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasIndex("VehicleProfileId");
 
-                    b.ToTable("Devices", (string)null);
+                    b.ToTable("Devices");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.Employee", b =>
@@ -150,7 +153,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Employees", (string)null);
+                    b.ToTable("Employees");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.EmployeeStationAssignment", b =>
@@ -178,7 +181,7 @@ namespace MusterHubCommand.Api.Migrations
                     b.HasIndex("EmployeeId", "OrgUnitId")
                         .IsUnique();
 
-                    b.ToTable("EmployeeStationAssignments", (string)null);
+                    b.ToTable("EmployeeStationAssignments");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.Incident", b =>
@@ -193,11 +196,11 @@ namespace MusterHubCommand.Api.Migrations
                     b.Property<string>("CloseActionsTaken")
                         .HasColumnType("text");
 
-                    b.Property<string>("CloseOutcome")
+                    b.Property<string>("CloseCause")
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("CloseTypeId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("CloseOutcome")
+                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("ClosedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -239,14 +242,12 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CloseTypeId");
-
                     b.HasIndex("OrgUnitId");
 
                     b.HasIndex("OrganisationId", "ExternalReference")
                         .IsUnique();
 
-                    b.ToTable("Incidents", (string)null);
+                    b.ToTable("Incidents");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentAction", b =>
@@ -309,7 +310,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasIndex("SectorId");
 
-                    b.ToTable("IncidentActions", (string)null);
+                    b.ToTable("IncidentActions");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentAppliance", b =>
@@ -351,76 +352,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasIndex("SectorId");
 
-                    b.ToTable("IncidentAppliances", (string)null);
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentAttachment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("IncidentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("OrganisationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<long>("SizeBytes")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("StoragePath")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("UploadedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("UploadedByDeviceId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("UploadedByEmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IncidentId");
-
-                    b.HasIndex("UploadedByDeviceId");
-
-                    b.HasIndex("UploadedByEmployeeId");
-
-                    b.ToTable("IncidentAttachments", (string)null);
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentCloseType", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("OrganisationId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("IncidentCloseTypes", (string)null);
+                    b.ToTable("IncidentAppliances");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentSector", b =>
@@ -459,7 +391,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasIndex("PersonInChargeEmployeeId");
 
-                    b.ToTable("IncidentSectors", (string)null);
+                    b.ToTable("IncidentSectors");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentUpdate", b =>
@@ -505,7 +437,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasIndex("ReplyToUpdateId");
 
-                    b.ToTable("IncidentUpdates", (string)null);
+                    b.ToTable("IncidentUpdates");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IntegrationApiKey", b =>
@@ -539,7 +471,7 @@ namespace MusterHubCommand.Api.Migrations
                     b.HasIndex("KeyHash")
                         .IsUnique();
 
-                    b.ToTable("IntegrationApiKeys", (string)null);
+                    b.ToTable("IntegrationApiKeys");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.OrgUnit", b =>
@@ -582,7 +514,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasIndex("Path");
 
-                    b.ToTable("OrgUnits", (string)null);
+                    b.ToTable("OrgUnits");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.OrgUnitType", b =>
@@ -612,7 +544,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasIndex("AllowedParentTypeId");
 
-                    b.ToTable("OrgUnitTypes", (string)null);
+                    b.ToTable("OrgUnitTypes");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.OrganisationSettings", b =>
@@ -629,7 +561,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("OrganisationSettings", (string)null);
+                    b.ToTable("OrganisationSettings");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.VehicleProfile", b =>
@@ -656,7 +588,7 @@ namespace MusterHubCommand.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("VehicleProfiles", (string)null);
+                    b.ToTable("VehicleProfiles");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.CommandOperator", b =>
@@ -709,18 +641,11 @@ namespace MusterHubCommand.Api.Migrations
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.Incident", b =>
                 {
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.IncidentCloseType", "CloseType")
-                        .WithMany()
-                        .HasForeignKey("CloseTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("MusterHubCommand.Api.Data.Entities.OrgUnit", "OrgUnit")
                         .WithMany()
                         .HasForeignKey("OrgUnitId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("CloseType");
 
                     b.Navigation("OrgUnit");
                 });
@@ -773,31 +698,6 @@ namespace MusterHubCommand.Api.Migrations
                     b.Navigation("OfficerInChargeEmployee");
 
                     b.Navigation("Sector");
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentAttachment", b =>
-                {
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.Incident", "Incident")
-                        .WithMany()
-                        .HasForeignKey("IncidentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.Device", "UploadedByDevice")
-                        .WithMany()
-                        .HasForeignKey("UploadedByDeviceId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.Employee", "UploadedByEmployee")
-                        .WithMany()
-                        .HasForeignKey("UploadedByEmployeeId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Incident");
-
-                    b.Navigation("UploadedByDevice");
-
-                    b.Navigation("UploadedByEmployee");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.IncidentSector", b =>

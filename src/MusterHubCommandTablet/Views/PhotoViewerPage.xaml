@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="MusterHubCommandTablet.Views.PhotoViewerPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
+    x:DataType="vm:PhotoViewerViewModel"
+    Shell.NavBarIsVisible="False"
+    BackgroundColor="Black">
+
+    <Grid>
+        <Image
+            x:Name="PhotoImage"
+            Source="{Binding Image}"
+            Aspect="AspectFit"
+            IsVisible="{Binding Image, Converter={StaticResource ObjectNotNullToBoolConverter}}">
+            <Image.GestureRecognizers>
+                <PinchGestureRecognizer PinchUpdated="OnPinchUpdated" />
+                <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
+            </Image.GestureRecognizers>
+        </Image>
+
+        <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="White" VerticalOptions="Center" HorizontalOptions="Center" />
+
+        <Border
+            IsVisible="{Binding HasError}"
+            BackgroundColor="{StaticResource StatusHazard}"
+            StrokeThickness="0"
+            StrokeShape="RoundRectangle 10"
+            Padding="16,12"
+            VerticalOptions="Center"
+            HorizontalOptions="Center"
+            Margin="20">
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource White}" FontAttributes="Bold" />
+        </Border>
+
+        <Grid ColumnDefinitions="Auto, *" Padding="20" VerticalOptions="Start">
+            <Button Grid.Column="0" Text="&#8592; Back" Command="{Binding GoBackCommand}" TextColor="White" BackgroundColor="#33FFFFFF" BorderColor="White" BorderWidth="1" CornerRadius="10" Padding="16,12" />
+            <Label Grid.Column="1" Text="{Binding FileName}" TextColor="White" VerticalOptions="Center" HorizontalOptions="Center" />
+        </Grid>
+    </Grid>
+</ContentPage>

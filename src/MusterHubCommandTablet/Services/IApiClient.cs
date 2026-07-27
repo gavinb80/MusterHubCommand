@@ -22,4 +22,10 @@ public interface IApiClient
     Task<(IncidentDto? Result, string? Error)> StartNavigationAsync(Guid incidentId);
     Task<(OrganisationSettingsDto? Result, string? Error)> GetOrganisationSettingsAsync();
     Task<(TabletDeviceDto? Result, string? Error)> GetDeviceAsync();
+    Task<(IncidentAttachmentDto? Result, string? Error)> UploadAttachmentAsync(Guid incidentId, Stream content, string fileName, string contentType);
+
+    // A plain ImageSource can't carry the device's Bearer token, so
+    // rendering a thumbnail (or opening a full preview) fetches the bytes
+    // through here first -- same reasoning as the web app's apiFetchBlob.
+    Task<(Stream? Result, string? Error)> DownloadAttachmentAsync(Guid attachmentId);
 }

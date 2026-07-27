@@ -19,8 +19,13 @@ namespace MusterHubCommand.Api.Controllers;
 // everything else about an incident (status, attendance, control-room
 // updates) is Vision/operator-authored.
 [Route("api/tablet/incidents")]
-public class TabletIncidentsController(IncidentService incidentService, ApplicationDbContext db, RoutingService routingService) : DeviceControllerBase
+public class TabletIncidentsController(IncidentService incidentService, ApplicationDbContext db, RoutingService routingService, IFileStorage fileStorage) : DeviceControllerBase
 {
+    private const long MaxAttachmentBytes = 50 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedAttachmentContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg", "image/png", "image/heic", "image/heif", "image/webp", "application/pdf",
+    };
     [HttpGet]
     public async Task<ActionResult<List<IncidentSummaryDto>>> List()
     {
@@ -143,6 +148,61 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
 
         var updated = await incidentService.SetSingleApplianceStatusAsync(OrganisationId, id, DeviceCallsign!, ApplianceStatus.EnRoute);
         return Ok((updated ?? incident).ToDto());
+    }
+
+    [HttpPost("{id}/attachments")]
+    [RequestSizeLimit(MaxAttachmentBytes + 1024)]
+    public async Task<ActionResult<IncidentAttachmentDto>> UploadAttachment(Guid id, IFormFile file)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        if (file.Length == 0) return BadRequest("File is empty.");
+        if (file.Length > MaxAttachmentBytes) return BadRequest("File is too large (max 50MB).");
+        if (!AllowedAttachmentContentTypes.Contains(file.ContentType)) return BadRequest($"Unsupported file type '{file.ContentType}'.");
+
+        var attachment = new IncidentAttachment
+        {
+            OrganisationId = OrganisationId,
+            IncidentId = id,
+            FileName = file.FileName,
+            ContentType = file.ContentType,
+            SizeBytes = file.Length,
+            StoragePath = "",
+            UploadedByDeviceId = DeviceId,
+        };
+        attachment.StoragePath = $"{OrganisationId}/{id}/{attachment.Id}{Path.GetExtension(file.FileName)}";
+
+        await using (var stream = file.OpenReadStream())
+            await fileStorage.SaveAsync(attachment.StoragePath, stream, file.ContentType);
+
+        db.IncidentAttachments.Add(attachment);
+        await db.SaveChangesAsync();
+
+        var deviceLabel = await db.Devices.IgnoreQueryFilters().Where(d => d.Id == DeviceId).Select(d => d.Label).FirstOrDefaultAsync();
+        return Ok(new IncidentAttachmentDto(attachment.Id, attachment.FileName, attachment.ContentType, attachment.SizeBytes, attachment.UploadedAtUtc, deviceLabel));
+    }
+
+    // Attendance-scoped, not a shared endpoint with the web console's own
+    // /api/incident-attachments/{id} -- device-token and JWT auth don't
+    // share a pipeline cleanly, and this route additionally has to check
+    // the attachment's own incident is one this device is attending, not
+    // just that any operator in the org can see it.
+    [HttpGet("/api/tablet/incident-attachments/{attachmentId}")]
+    public async Task<IActionResult> DownloadAttachment(Guid attachmentId)
+    {
+        // AttendedByThisDevice reads incident.Appliances -- without this
+        // ThenInclude it silently evaluates against the entity's default
+        // empty list rather than throwing, so every request looked
+        // "not attending" regardless of actual attendance.
+        var attachment = await db.IncidentAttachments.IgnoreQueryFilters()
+            .Include(a => a.Incident).ThenInclude(i => i!.Appliances)
+            .FirstOrDefaultAsync(a => a.Id == attachmentId && a.OrganisationId == OrganisationId);
+        if (attachment?.Incident is null || !AttendedByThisDevice(attachment.Incident)) return NotFound();
+
+        var stream = await fileStorage.OpenReadAsync(attachment.StoragePath);
+        if (stream is null) return NotFound();
+        return File(stream, attachment.ContentType, attachment.FileName);
     }
 
     // Station match is necessary but not sufficient -- a device with no

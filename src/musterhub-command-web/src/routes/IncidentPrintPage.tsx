@@ -1,9 +1,48 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { apiFetch } from "../auth/apiClient";
-import type { IncidentDto } from "../api/types";
+import { apiFetch, apiFetchBlob } from "../auth/apiClient";
+import type { IncidentAttachmentDto, IncidentDto } from "../api/types";
 
 const ACTION_KIND_LABELS: Record<string, string> = { Task: "Task", ResourceRequest: "Resource Request" };
+
+// A plain <img src="/api/..."> can't carry this app's Bearer token, so each
+// photo fetches its own bytes through apiFetchBlob and builds an object URL
+// -- deliberately its own effect, not folded into the page's main incident
+// query, which stays untouched (staleTime: Infinity below) precisely
+// because a refetch there has bitten this page before.
+function PrintAttachment({ attachment }: { attachment: IncidentAttachmentDto }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const isImage = attachment.contentType.startsWith("image/");
+
+  useEffect(() => {
+    if (!isImage) return;
+    let cancelled = false;
+    let url: string | null = null;
+    apiFetchBlob(`/incident-attachments/${attachment.id}`).then((blob) => {
+      if (cancelled) return;
+      url = URL.createObjectURL(blob);
+      setObjectUrl(url);
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [attachment.id, isImage]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      {isImage && objectUrl ? (
+        <img src={objectUrl} alt={attachment.fileName} className="h-40 w-full rounded border border-(--surface-border) object-cover" />
+      ) : (
+        <div className="flex h-40 w-full items-center justify-center rounded border border-(--surface-border) text-caption text-(--content-secondary)">
+          {attachment.fileName.split(".").pop()?.toUpperCase()}
+        </div>
+      )}
+      <p className="truncate text-caption text-(--content-secondary)" title={attachment.fileName}>{attachment.fileName}</p>
+    </div>
+  );
+}
 
 // A dedicated route rather than a print stylesheet on the live incident
 // page -- the live page is full of buttons/forms/dropdowns that make no
@@ -71,6 +110,32 @@ export function IncidentPrintPage() {
       </p>
       {incident.description && <p className="mt-2 text-body">{incident.description}</p>}
 
+      {incident.status === "Closed" && (incident.closeTypeCode || incident.closeActionsTaken || incident.closeOutcome) && (
+        <>
+          <h2 className="mt-8 border-b border-(--surface-border) pb-1 text-card-title font-semibold">Close Summary</h2>
+          <dl className="mt-2 flex flex-col gap-2">
+            {incident.closeTypeCode && (
+              <div>
+                <dt className="text-caption font-semibold uppercase tracking-wide text-(--content-secondary)">Close type</dt>
+                <dd className="text-body">{incident.closeTypeCode} - {incident.closeTypeName}</dd>
+              </div>
+            )}
+            {incident.closeActionsTaken && (
+              <div>
+                <dt className="text-caption font-semibold uppercase tracking-wide text-(--content-secondary)">Actions taken</dt>
+                <dd className="text-body">{incident.closeActionsTaken}</dd>
+              </div>
+            )}
+            {incident.closeOutcome && (
+              <div>
+                <dt className="text-caption font-semibold uppercase tracking-wide text-(--content-secondary)">Outcome</dt>
+                <dd className="text-body">{incident.closeOutcome}</dd>
+              </div>
+            )}
+          </dl>
+        </>
+      )}
+
       <h2 className="mt-8 border-b border-(--surface-border) pb-1 text-card-title font-semibold">Attendance</h2>
       {sectorGroups.length === 0 && <p className="mt-2 text-body text-(--content-secondary)">No appliances attended.</p>}
       {sectorGroups.map((group) => (
@@ -126,9 +191,19 @@ export function IncidentPrintPage() {
           <li className="text-body">
             <span className="text-caption text-(--content-secondary)">{new Date(incident.closedAtUtc).toLocaleString()}</span>
             {" — "}Incident closed
+            {incident.closeTypeCode && ` (${incident.closeTypeCode} - ${incident.closeTypeName})`}
           </li>
         )}
       </ul>
+
+      {incident.attachments.length > 0 && (
+        <>
+          <h2 className="mt-8 border-b border-(--surface-border) pb-1 text-card-title font-semibold">Photos &amp; Documents</h2>
+          <div className="mt-2 grid grid-cols-3 gap-3">
+            {incident.attachments.map((a) => <PrintAttachment key={a.id} attachment={a} />)}
+          </div>
+        </>
+      )}
     </div>
   );
 }
