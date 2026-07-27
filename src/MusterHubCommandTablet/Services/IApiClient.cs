@@ -17,6 +17,9 @@ public interface IApiClient
     Task<(IncidentDto? Result, string? Error)> AddActionAsync(Guid incidentId, AddActionRequest request);
     Task<(IncidentDto? Result, string? Error)> AcknowledgeActionAsync(Guid incidentId, Guid actionId);
     Task<(IncidentDto? Result, string? Error)> ResolveActionAsync(Guid incidentId, Guid actionId, string status);
+    Task<(IncidentDto? Result, string? Error)> AddObjectiveAsync(Guid incidentId, string text);
+    Task<(IncidentDto? Result, string? Error)> AchieveObjectiveAsync(Guid incidentId, Guid objectiveId);
+    Task<(IncidentDto? Result, string? Error)> ReopenObjectiveAsync(Guid incidentId, Guid objectiveId);
     Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId);
     Task<string?> ReportLocationAsync(double latitude, double longitude);
     Task<(IncidentDto? Result, string? Error)> StartNavigationAsync(Guid incidentId);

@@ -79,6 +79,24 @@ export interface IncidentUpdateDto {
   createdAtUtc: string;
 }
 
+export type IncidentObjectiveStatus = "Open" | "Achieved";
+
+// raisedByName/achievedByName are always resolved server-side from the
+// caller's own session (the signed-in operator, or a tablet's
+// DeviceCallsign) -- never caller-supplied, unlike
+// IncidentActionDto.raisedByName.
+export interface IncidentObjectiveDto {
+  id: string;
+  text: string;
+  status: IncidentObjectiveStatus;
+  source: IncidentUpdateSource;
+  raisedByName: string;
+  raisedByEmployeeId: string | null;
+  achievedAtUtc: string | null;
+  achievedByName: string | null;
+  createdAtUtc: string;
+}
+
 // assignedToName/raisedByName are always the display name -- resolved
 // server-side the same way IncidentSectorDto.personInChargeName is.
 export interface IncidentActionDto {
@@ -121,6 +139,7 @@ export interface IncidentDto {
   appliances: IncidentApplianceDto[];
   updates: IncidentUpdateDto[];
   sectors: IncidentSectorDto[];
+  objectives: IncidentObjectiveDto[];
   actions: IncidentActionDto[];
   attachments: IncidentAttachmentDto[];
 }
@@ -187,6 +206,12 @@ export interface AddIncidentUpdateRequest {
 
 export interface AcknowledgeUpdateRequest {
   acknowledgedByName?: string | null;
+}
+
+// Only text -- raisedByName/raisedByEmployeeId are resolved server-side by
+// the caller, not accepted here the way AddActionRequest.raisedByName is.
+export interface AddObjectiveRequest {
+  text: string;
 }
 
 // Kind isn't direction-locked -- see the API's own AddActionRequest comment.

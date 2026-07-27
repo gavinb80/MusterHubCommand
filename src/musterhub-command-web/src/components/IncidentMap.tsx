@@ -1,8 +1,9 @@
-import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import markerIconUrl from "leaflet/dist/images/marker-icon.png";
 import markerIcon2xUrl from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadowUrl from "leaflet/dist/images/marker-shadow.png";
+import type { ApplianceStatus } from "../api/types";
 
 // Leaflet's default marker icon references its own image paths relative to
 // the CSS file, which breaks once Vite bundles/hashes assets -- every
@@ -17,16 +18,29 @@ const markerIcon = L.icon({
 
 // A plain coloured dot, not another pin -- an appliance's position needs to
 // read as visually distinct from the incident's own marker at a glance,
-// not as "a second incident."
-const applianceIcon = L.divIcon({
-  className: "",
-  html: '<div style="width:16px;height:16px;border-radius:50%;background:#0A84FF;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
-});
+// not as "a second incident." Colour keys off status (same tokens as the
+// status pills elsewhere) so en-route vs on-scene reads without a click;
+// the permanent callsign tooltip next to each dot is what actually answers
+// "which appliance is this" when more than one is visible.
+function buildApplianceIcon(color: string) {
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+const APPLIANCE_STATUS_ICONS: Record<ApplianceStatus, L.DivIcon> = {
+  Mobilised: buildApplianceIcon("var(--color-status-mobilised)"),
+  EnRoute: buildApplianceIcon("var(--color-status-en-route)"),
+  OnScene: buildApplianceIcon("var(--color-status-on-scene)"),
+  StoodDown: buildApplianceIcon("var(--color-status-stood-down)"),
+};
 
 export interface AppliancePosition {
   label: string;
+  status: ApplianceStatus;
   latitude: number;
   longitude: number;
 }
@@ -90,9 +104,14 @@ export function IncidentMap({
   appliances?: AppliancePosition[];
   routePoints?: [number, number][];
   geofenceRadiusMeters?: number;
-  // The small inline map on the incident page is deliberately inert (no
-  // scroll-hijacking, no accidental drag) -- the larger annotate view is
-  // the one place free pan/zoom is wanted, so it opts in explicitly.
+  // The small inline map on the incident page guards against scroll- and
+  // gesture-hijacking (page-scroll-wheel zoom, pinch-zoom, double-click
+  // zoom firing by accident) -- the larger annotate view opts into those
+  // explicitly. Dragging isn't part of that: a click-and-drag pan is a
+  // deliberate gesture, not one that fires by accident, so it stays on
+  // even when the map is otherwise inert -- Leaflet always shows its
+  // zoom +/- buttons regardless of this flag, and a map you can zoom but
+  // not pan reads as broken.
   interactive?: boolean;
   heightClassName?: string;
   onAnnotate?: () => void;
@@ -103,7 +122,7 @@ export function IncidentMap({
       zoom={16}
       className={`${heightClassName} w-full`}
       scrollWheelZoom={interactive}
-      dragging={interactive}
+      dragging
       doubleClickZoom={interactive}
       touchZoom={interactive}
     >
@@ -121,7 +140,11 @@ export function IncidentMap({
       )}
       <Marker position={[latitude, longitude]} icon={markerIcon} title={label} />
       {appliances?.map((a, i) => (
-        <Marker key={i} position={[a.latitude, a.longitude]} icon={applianceIcon} title={a.label} />
+        <Marker key={i} position={[a.latitude, a.longitude]} icon={APPLIANCE_STATUS_ICONS[a.status]}>
+          <Tooltip permanent direction="right" offset={[8, 0]} className="appliance-label-tooltip" opacity={1}>
+            {a.label}
+          </Tooltip>
+        </Marker>
       ))}
       {routePoints && routePoints.length > 1 && (
         <Polyline positions={routePoints} pathOptions={{ color: "#0A84FF", weight: 4, opacity: 0.8 }} />

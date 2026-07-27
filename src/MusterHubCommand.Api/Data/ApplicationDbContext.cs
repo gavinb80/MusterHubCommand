@@ -22,6 +22,7 @@ public class ApplicationDbContext(
     public DbSet<IncidentAppliance> IncidentAppliances => Set<IncidentAppliance>();
     public DbSet<IncidentUpdate> IncidentUpdates => Set<IncidentUpdate>();
     public DbSet<IncidentSector> IncidentSectors => Set<IncidentSector>();
+    public DbSet<IncidentObjective> IncidentObjectives => Set<IncidentObjective>();
     public DbSet<IncidentAction> IncidentActions => Set<IncidentAction>();
     public DbSet<IncidentCloseType> IncidentCloseTypes => Set<IncidentCloseType>();
     public DbSet<IncidentAttachment> IncidentAttachments => Set<IncidentAttachment>();
@@ -94,6 +95,7 @@ public class ApplicationDbContext(
             e.HasMany(i => i.Appliances).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Updates).WithOne(u => u.Incident).HasForeignKey(u => u.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Sectors).WithOne(s => s.Incident).HasForeignKey(s => s.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(i => i.Objectives).WithOne(o => o.Incident).HasForeignKey(o => o.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Actions).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Attachments).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -114,6 +116,16 @@ public class ApplicationDbContext(
             // deleted sector shouldn't block or cascade into removing a
             // task/request that happened to be tied to it.
             e.HasOne(a => a.Sector).WithMany().HasForeignKey(a => a.SectorId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<IncidentObjective>(e =>
+        {
+            // SetNull, same reasoning as IncidentAction.AssignedToEmployee --
+            // a deleted employee shouldn't block or cascade into removing
+            // an objective. Audit-only: RaisedByEmployee is never
+            // .Include()'d or resolved for display, RaisedByName already
+            // is the string to show.
+            e.HasOne(o => o.RaisedByEmployee).WithMany().HasForeignKey(o => o.RaisedByEmployeeId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<IncidentAppliance>(e =>

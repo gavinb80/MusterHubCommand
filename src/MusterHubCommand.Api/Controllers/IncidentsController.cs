@@ -249,6 +249,50 @@ public class IncidentsController(
         catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
+    [HttpPost("{id}/objectives")]
+    public async Task<ActionResult<IncidentDto>> AddObjective(Guid id, AddObjectiveRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (string.IsNullOrWhiteSpace(request.Text)) return BadRequest("Text is required.");
+
+        var (name, employeeId) = await ResolveCallerAsync();
+        var updated = await incidentService.RaiseObjectiveAsync(
+            OrganisationId, id, request.Text.Trim(), IncidentUpdateSource.ControlRoom, name, employeeId);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPost("{id}/objectives/{objectiveId}/achieve")]
+    public async Task<ActionResult<IncidentDto>> AchieveObjective(Guid id, Guid objectiveId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var (name, _) = await ResolveCallerAsync();
+        var updated = await incidentService.AchieveObjectiveAsync(OrganisationId, id, objectiveId, name);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPost("{id}/objectives/{objectiveId}/reopen")]
+    public async Task<ActionResult<IncidentDto>> ReopenObjective(Guid id, Guid objectiveId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var updated = await incidentService.ReopenObjectiveAsync(OrganisationId, id, objectiveId);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    // RaisedByName/AchievedByName on an objective are always the caller's
+    // own identity, never a caller-supplied field -- see
+    // AddObjectiveRequest's own comment. Falls back to "Control Room" the
+    // same way AcknowledgeAction/ResolveAction already default their own
+    // optional -ByName fields.
+    private async Task<(string Name, Guid? EmployeeId)> ResolveCallerAsync()
+    {
+        var employeeId = await CurrentEmployeeIdAsync();
+        if (employeeId is null) return ("Control Room", null);
+        var name = await db.Employees.Where(e => e.Id == employeeId).Select(e => e.DisplayName).FirstOrDefaultAsync();
+        return (name ?? "Control Room", employeeId);
+    }
+
     // Same route computation as the tablet's own GET .../route, but for a
     // control-room operator picking any device (not just "this tablet's
     // own") to check against -- e.g. comparing which of two attending

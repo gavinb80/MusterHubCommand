@@ -60,6 +60,15 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<(IncidentDto? Result, string? Error)> ResolveActionAsync(Guid incidentId, Guid actionId, string status) =>
         PostAsync<ResolveActionRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/actions/{actionId}/resolve", new ResolveActionRequest(status));
 
+    public Task<(IncidentDto? Result, string? Error)> AddObjectiveAsync(Guid incidentId, string text) =>
+        PostAsync<AddObjectiveRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/objectives", new AddObjectiveRequest(text));
+
+    public Task<(IncidentDto? Result, string? Error)> AchieveObjectiveAsync(Guid incidentId, Guid objectiveId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/objectives/{objectiveId}/achieve");
+
+    public Task<(IncidentDto? Result, string? Error)> ReopenObjectiveAsync(Guid incidentId, Guid objectiveId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/objectives/{objectiveId}/reopen");
+
     public Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId) =>
         GetAsync<RouteResponseDto>($"api/tablet/incidents/{incidentId}/route");
 

@@ -38,6 +38,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             .Include(i => i.OrgUnit)
             .Include(i => i.CloseType)
             .Include(i => i.Sectors).ThenInclude(s => s.PersonInChargeEmployee)
+            .Include(i => i.Objectives)
             .Include(i => i.Actions).ThenInclude(a => a.AssignedToEmployee)
             .Include(i => i.Attachments).ThenInclude(a => a.UploadedByEmployee)
             .Include(i => i.Attachments).ThenInclude(a => a.UploadedByDevice)
@@ -580,6 +581,82 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             action.ResolvedAtUtc = DateTimeOffset.UtcNow;
             action.ResolvedByName = resolvedByName;
             QueueActionChangeUpdate(incident, action.Source, $"{action.Text}: {status.ToString().ToLowerInvariant()} by {resolvedByName}");
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return incident;
+    }
+
+    // Deliberately no QueueActionChangeUpdate/IncidentUpdate write anywhere
+    // in these three methods -- objectives are a structured list distinct
+    // from the Timeline feed, by design.
+    public async Task<Incident?> RaiseObjectiveAsync(
+        Guid organisationId, Guid incidentId, string text, IncidentUpdateSource source,
+        string raisedByName, Guid? raisedByEmployeeId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        // Not also added to incident.Objectives -- same EF change-tracker
+        // fixup gotcha as RaiseActionAsync/AddSectorAsync. No nav-fixup
+        // needed the way RaiseActionAsync needs for AssignedToEmployee --
+        // RaisedByName is already the string to display, never resolved
+        // live from a nav.
+        db.IncidentObjectives.Add(new IncidentObjective
+        {
+            IncidentId = incident.Id,
+            Text = text,
+            Source = source,
+            RaisedByName = raisedByName,
+            RaisedByEmployeeId = raisedByEmployeeId,
+        });
+
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return incident;
+    }
+
+    // Idempotent, same "two tablets racing the same ~15s poll" reasoning
+    // as AcknowledgeActionAsync -- but guarded on Status equality, not a
+    // nullable timestamp, since Achieved can later flip back to Open via
+    // ReopenObjectiveAsync and be achieved again, unlike IncidentAction's
+    // one-way ResolvedAtUtc.
+    public async Task<Incident?> AchieveObjectiveAsync(Guid organisationId, Guid incidentId, Guid objectiveId, string achievedByName, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var objective = incident.Objectives.FirstOrDefault(o => o.Id == objectiveId);
+        if (objective is null) return incident;
+
+        if (objective.Status != IncidentObjectiveStatus.Achieved)
+        {
+            objective.Status = IncidentObjectiveStatus.Achieved;
+            objective.AchievedAtUtc = DateTimeOffset.UtcNow;
+            objective.AchievedByName = achievedByName;
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return incident;
+    }
+
+    // Same idempotency shape as AchieveObjectiveAsync, the other
+    // direction. Clears AchievedAtUtc/AchievedByName rather than leaving
+    // the prior achiever's stamp -- if this gets achieved again later
+    // that's a fresh achievement, not a continuation of the old one.
+    public async Task<Incident?> ReopenObjectiveAsync(Guid organisationId, Guid incidentId, Guid objectiveId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var objective = incident.Objectives.FirstOrDefault(o => o.Id == objectiveId);
+        if (objective is null) return incident;
+
+        if (objective.Status != IncidentObjectiveStatus.Open)
+        {
+            objective.Status = IncidentObjectiveStatus.Open;
+            objective.AchievedAtUtc = null;
+            objective.AchievedByName = null;
             incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
         }
