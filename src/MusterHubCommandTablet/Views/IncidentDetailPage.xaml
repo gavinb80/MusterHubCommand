@@ -6,6 +6,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
     xmlns:models="clr-namespace:MusterHubCommandTablet.Models"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     x:DataType="vm:IncidentDetailViewModel"
     Shell.NavBarIsVisible="False"
     Padding="20">
@@ -57,9 +58,43 @@
             <Grid Grid.Row="0" RowDefinitions="Auto, *" VerticalOptions="Fill">
                 <Label Grid.Row="0" Text="Route to incident" Style="{StaticResource CardTitleLabel}" FontSize="16" FontAttributes="Bold" Margin="0,0,0,8" IsVisible="{Binding HasLocation}" />
                 <Border Grid.Row="1" StrokeShape="RoundRectangle 8" StrokeThickness="0" VerticalOptions="Fill" HorizontalOptions="Fill">
-                    <WebView x:Name="MapWebView" Source="{Binding MapSource}" Navigated="OnMapNavigated" VerticalOptions="Fill" HorizontalOptions="Fill" />
+                    <Grid>
+                        <!-- ZIndex is required, not decorative: on
+                             Android, a WebView left at the implicit
+                             default ZIndex painted over every later
+                             sibling in this Grid regardless of XAML
+                             declaration order (confirmed by testing a
+                             plain unbound BoxView, which was also
+                             invisible until this was added). Giving the
+                             WebView an explicit ZIndex fixes the paint
+                             order for all its siblings, no matter what
+                             ZIndex (or lack of one) they have. -->
+                        <WebView x:Name="MapWebView" Source="{Binding MapSource}" Navigated="OnMapNavigated" VerticalOptions="Fill" HorizontalOptions="Fill" ZIndex="0" />
+
+                        <!-- Replaces Leaflet's own +/- control, which
+                             index.html disables (see its zoomControl
+                             comment), same fix NavigatePage already
+                             applies to its own map. -->
+                        <VerticalStackLayout HorizontalOptions="Start" VerticalOptions="Start" Margin="8" Spacing="6" IsVisible="{Binding HasLocation}">
+                            <Button Text="+" Style="{StaticResource MapZoomButton}" Command="{Binding ZoomInCommand}" />
+                            <Button Text="&#8722;" Style="{StaticResource MapZoomButton}" Command="{Binding ZoomOutCommand}" />
+                        </VerticalStackLayout>
+
+                        <ImageButton
+                            Source="center_incident.svg"
+                            Style="{StaticResource MapIconButton}"
+                            Command="{Binding RecenterMapCommand}"
+                            HorizontalOptions="End"
+                            VerticalOptions="Start"
+                            Margin="8"
+                            IsVisible="{Binding HasLocation}">
+                            <ImageButton.Behaviors>
+                                <toolkit:IconTintColorBehavior TintColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                            </ImageButton.Behaviors>
+                        </ImageButton>
+                    </Grid>
                 </Border>
-                
+
                 <Label Grid.Row="1" Text="No location set for this incident yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding HasLocation, Converter={StaticResource InvertedBoolConverter}}" HorizontalOptions="Center" VerticalOptions="Center" />
             </Grid>
 
@@ -170,9 +205,11 @@
                 <!-- Attendance Card -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
-                        <Grid ColumnDefinitions="*, Auto">
+                        <Grid ColumnDefinitions="*, Auto, Auto, Auto" ColumnSpacing="8">
                             <Label Grid.Column="0" Text="Attendance" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" VerticalOptions="Center" />
-                            <Button Grid.Column="1" Text="View hierarchy" Command="{Binding ViewHierarchyCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                            <Button Grid.Column="1" Text="Annotate map" Command="{Binding AnnotateMapCommand}" IsVisible="{Binding HasLocation}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                            <Button Grid.Column="2" Text="Photos" Command="{Binding ViewPhotosCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                            <Button Grid.Column="3" Text="View hierarchy" Command="{Binding ViewHierarchyCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
                         </Grid>
                         <Label Text="No appliances attending yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Incident.Appliances, Converter={StaticResource CollectionEmptyConverter}}" />
                         <!-- Sector-grouped, read-only. Creating sectors and

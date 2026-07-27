@@ -15,6 +15,9 @@ public partial class AppShell : Shell
         // directly.
         Routing.RegisterRoute("incident-detail", typeof(IncidentDetailPage));
         Routing.RegisterRoute("incident-hierarchy", typeof(IncidentHierarchyPage));
+        Routing.RegisterRoute("incident-photos", typeof(PhotoCapturePage));
+        Routing.RegisterRoute("photo-viewer", typeof(PhotoViewerPage));
+        Routing.RegisterRoute("annotate-map", typeof(AnnotateMapPage));
         Routing.RegisterRoute("navigate", typeof(NavigatePage));
 
         // Shell always lands on its first ShellContent ("pairing") by

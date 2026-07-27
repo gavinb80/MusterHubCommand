@@ -113,10 +113,31 @@ export interface IncidentDto {
   startedAtUtc: string;
   closedAtUtc: string | null;
   updatedAtUtc: string;
+  closeTypeId: string | null;
+  closeTypeCode: string | null;
+  closeTypeName: string | null;
+  closeActionsTaken: string | null;
+  closeOutcome: string | null;
   appliances: IncidentApplianceDto[];
   updates: IncidentUpdateDto[];
   sectors: IncidentSectorDto[];
   actions: IncidentActionDto[];
+  attachments: IncidentAttachmentDto[];
+}
+
+export interface IncidentCloseTypeDto {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface IncidentAttachmentDto {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedAtUtc: string;
+  uploadedByName: string | null;
 }
 
 export interface IncidentSummaryDto {

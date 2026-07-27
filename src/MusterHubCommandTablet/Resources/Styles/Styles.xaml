@@ -70,6 +70,32 @@
         <Setter Property="MinimumHeightRequest" Value="48" />
     </Style>
 
+    <!-- Round buttons overlaid on a WebView-hosted Leaflet map, used by
+         NavigatePage, IncidentDetailPage's inline map and AnnotateMapPage,
+         all of which disable Leaflet's own zoomControl (see index.html's
+         comment) and replace it with these. -->
+    <Style x:Key="MapIconButton" TargetType="ImageButton">
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}" />
+        <Setter Property="BorderColor" Value="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="10" />
+        <Setter Property="WidthRequest" Value="48" />
+        <Setter Property="HeightRequest" Value="48" />
+    </Style>
+    <Style x:Key="MapZoomButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}" />
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+        <Setter Property="BorderColor" Value="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="WidthRequest" Value="48" />
+        <Setter Property="HeightRequest" Value="48" />
+    </Style>
+
     <Style TargetType="Entry">
         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" />
         <Setter Property="FontSize" Value="16" />

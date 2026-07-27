@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../auth/apiClient";
+import { apiFetch, apiFetchBlob } from "../auth/apiClient";
 import { getStoredToken } from "../auth/tokenStore";
 import { useToast } from "../components/ToastProvider";
 import { IncidentMap } from "../components/IncidentMap";
 import { LocationPicker } from "../components/LocationPicker";
 import { ApplianceOfficerControl } from "../components/ApplianceOfficerControl";
 import { PersonPicker } from "../components/PersonPicker";
+import { CloseIncidentModal } from "../components/CloseIncidentModal";
+import { AnnotateMapModal } from "../components/AnnotateMapModal";
 import type {
   AddActionRequest, AddIncidentUpdateRequest, ApplianceStatus, DeviceDto, EmployeeDto, GeocodeResponseDto,
-  IncidentActionKind, IncidentActionStatus, IncidentDto, IncidentUpdateType,
+  IncidentActionKind, IncidentActionStatus, IncidentAttachmentDto, IncidentDto, IncidentUpdateType,
   MeResponse, OrganisationSettingsDto, ResourceKind, RouteResponseDto, SetApplianceEntry,
 } from "../api/types";
 
@@ -338,7 +340,9 @@ function buildTimeline(incident: IncidentDto): TimelineEntry[] {
   ];
   if (incident.closedAtUtc) {
     entries.push({
-      id: "closed", kind: "closed", text: "Incident closed", caption: incident.status, timestamp: incident.closedAtUtc,
+      id: "closed", kind: "closed",
+      text: incident.closeTypeCode ? `Incident closed (${incident.closeTypeCode} - ${incident.closeTypeName})` : "Incident closed",
+      caption: incident.status, timestamp: incident.closedAtUtc,
       acknowledgeable: false, acknowledgedAtUtc: null, acknowledgedByName: null,
       updateId: null, replyToUpdateId: null,
     });
@@ -353,7 +357,7 @@ function buildTimeline(incident: IncidentDto): TimelineEntry[] {
 // "created"/"closed" are structural bookends, not an event type someone
 // would want to filter away -- they stay visible regardless of which
 // filter chips are active.
-const FILTERABLE_KINDS: TimelineEntry["kind"][] = ["general", "hazard", "resourceChange", "actionChange", "note"];
+const FILTERABLE_KINDS = ["general", "hazard", "resourceChange", "actionChange", "note"] as const satisfies readonly TimelineEntry["kind"][];
 const TIMELINE_FILTER_LABELS: Record<(typeof FILTERABLE_KINDS)[number], string> = {
   general: "General",
   hazard: "Hazard",
@@ -783,6 +787,137 @@ function ActionsPanel({ incident }: { incident: IncidentDto }) {
   );
 }
 
+function formatFileSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)}MB` : `${Math.round(bytes / 1024)}KB`;
+}
+
+function isImage(contentType: string) {
+  return contentType.startsWith("image/");
+}
+
+// A plain <img src="/api/..."> or <a href="/api/..."> can't carry the
+// Bearer token this app authenticates with, so both the thumbnail and the
+// "open" click fetch the blob through apiFetchBlob and hand the browser an
+// object URL instead. The thumbnail's object URL is cached for the
+// component's lifetime; "open" always fetches its own (short-lived, freed
+// once the new tab has loaded it) rather than reusing the thumbnail one,
+// since revoking on unmount here shouldn't yank the file out from under a
+// tab the user is still looking at.
+function AttachmentThumbnail({ attachment }: { attachment: IncidentAttachmentDto }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    if (!isImage(attachment.contentType)) return;
+    let cancelled = false;
+    let url: string | null = null;
+    apiFetchBlob(`/incident-attachments/${attachment.id}`).then((blob) => {
+      if (cancelled) return;
+      url = URL.createObjectURL(blob);
+      setObjectUrl(url);
+    }).catch((error) => showToast(error.message, "error"));
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [attachment.id, attachment.contentType, showToast]);
+
+  const open = async () => {
+    try {
+      const blob = await apiFetchBlob(`/incident-attachments/${attachment.id}`);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), "error");
+    }
+  };
+
+  return (
+    <button type="button" onClick={open} className="block w-full">
+      {objectUrl ? (
+        <img src={objectUrl} alt={attachment.fileName} className="h-24 w-full rounded object-cover" />
+      ) : (
+        <div className="flex h-24 w-full items-center justify-center rounded bg-(--surface-page) text-caption text-(--content-secondary)">
+          {attachment.fileName.split(".").pop()?.toUpperCase()}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function PhotosPanel({ incident }: { incident: IncidentDto }) {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["incident", incident.id] });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      return apiFetch<IncidentAttachmentDto>(`/incidents/${incident.id}/attachments`, { method: "POST", body });
+    },
+    onSuccess: invalidate,
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (attachmentId: string) => apiFetch<void>(`/incident-attachments/${attachmentId}`, { method: "DELETE" }),
+    onSuccess: invalidate,
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  return (
+    <div className="rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
+      <div className="flex items-center justify-between">
+        <h2 className="text-card-title font-semibold text-(--content-primary)">Photos &amp; Documents</h2>
+        <button
+          type="button"
+          disabled={uploadMutation.isPending}
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded-lg bg-brand-primary px-3 py-1.5 text-body font-semibold text-white disabled:opacity-60"
+        >
+          {uploadMutation.isPending ? "Uploading..." : "Upload"}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) uploadMutation.mutate(file);
+            e.target.value = "";
+          }}
+        />
+      </div>
+      {incident.attachments.length === 0 && (
+        <p className="mt-3 text-body text-(--content-secondary)">No photos or documents attached yet.</p>
+      )}
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {incident.attachments.map((a) => (
+          <div key={a.id} className="flex flex-col gap-1 rounded-lg border border-(--surface-border) p-2">
+            <AttachmentThumbnail attachment={a} />
+            <p className="truncate text-caption text-(--content-primary)" title={a.fileName}>{a.fileName}</p>
+            <p className="text-caption text-(--content-secondary)">
+              {formatFileSize(a.sizeBytes)}{a.uploadedByName && ` · ${a.uploadedByName}`}
+            </p>
+            <button
+              type="button"
+              onClick={() => { if (confirm(`Delete "${a.fileName}"?`)) deleteMutation.mutate(a.id); }}
+              className="text-caption text-status-hazard"
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function formatDistance(metres: number) {
   return metres >= 1000 ? `${(metres / 1000).toFixed(1)}km` : `${Math.round(metres)}m`;
 }
@@ -869,6 +1004,7 @@ function LocationPanel({ incident, route, onRouteChange }: {
   // Session-only, defaults visible -- not persisted across a reload or a
   // different incident, same as the tablet's own map-hide toggle.
   const [mapVisible, setMapVisible] = useState(true);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -969,8 +1105,20 @@ function LocationPanel({ incident, route, onRouteChange }: {
           appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
           routePoints={route.routePoints ?? undefined}
           geofenceRadiusMeters={geofenceRadiusMeters}
+          onAnnotate={() => setAnnotateOpen(true)}
         />
       )}
+      <AnnotateMapModal
+        open={annotateOpen}
+        onOpenChange={setAnnotateOpen}
+        incidentId={incident.id}
+        incidentReference={incident.externalReference}
+        latitude={incident.latitude!}
+        longitude={incident.longitude!}
+        label={incident.address ?? incident.incidentType}
+        appliances={route.appliances.map((d) => ({ label: d.label, latitude: d.currentLatitude!, longitude: d.currentLongitude! }))}
+        geofenceRadiusMeters={geofenceRadiusMeters}
+      />
       <div className="flex items-center justify-between">
         {/* RoutingPanel keeps rendering with the map hidden -- distance/
             duration is still useful info on its own, only the visual map
@@ -989,7 +1137,7 @@ function LocationPanel({ incident, route, onRouteChange }: {
   );
 }
 
-type DetailTab = "overview" | "tasks" | "timeline";
+type DetailTab = "overview" | "tasks" | "timeline" | "photos";
 
 // Plain buttons, not a component library -- this is the same idea as
 // every other bit of UI in this file, just toggling which panel below
@@ -1093,13 +1241,7 @@ export function IncidentDetailPage() {
             Export
           </Link>
           {incident.status === "Open" && canManageIncident && (
-            <button
-              type="button"
-              onClick={() => statusMutation.mutate("Closed")}
-              className="rounded-lg border border-(--surface-border) px-3 py-1.5 text-body text-(--content-primary)"
-            >
-              Close
-            </button>
+            <CloseIncidentModal incidentId={incident.id} />
           )}
           {incident.status === "Closed" && (
             <button
@@ -1147,6 +1289,12 @@ export function IncidentDetailPage() {
               badgeUrgent={unacknowledged.some((u) => u.updateType === "Hazard")}
               onClick={() => setActiveTab("timeline")}
             />
+            <TabButton
+              label="Photos"
+              active={activeTab === "photos"}
+              badge={incident.attachments.length}
+              onClick={() => setActiveTab("photos")}
+            />
           </div>
         );
       })()}
@@ -1154,6 +1302,7 @@ export function IncidentDetailPage() {
       {activeTab === "overview" && <AttendancePanel incident={incident} />}
       {activeTab === "tasks" && <ActionsPanel incident={incident} />}
       {activeTab === "timeline" && <TimelinePanel incident={incident} />}
+      {activeTab === "photos" && <PhotosPanel incident={incident} />}
     </div>
   );
 }

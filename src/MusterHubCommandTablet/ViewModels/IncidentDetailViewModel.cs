@@ -592,6 +592,28 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     [RelayCommand]
     private async Task ViewHierarchyAsync() => await Shell.Current.GoToAsync($"incident-hierarchy?id={IncidentId}");
 
+    [RelayCommand]
+    private async Task ViewPhotosAsync() => await Shell.Current.GoToAsync($"incident-photos?id={IncidentId}");
+
+    [RelayCommand]
+    private async Task AnnotateMapAsync() => await Shell.Current.GoToAsync($"annotate-map?id={IncidentId}");
+
+    // Leaflet's own zoomControl is disabled (see index.html's comment) --
+    // same plain-event pattern NavigateViewModel.ScriptRequested already
+    // establishes, since the View owns the WebView reference, not this
+    // ViewModel, and a command needs to run every tap even when two taps
+    // in a row produce the identical script string.
+    public event Action<string>? ScriptRequested;
+
+    [RelayCommand]
+    private void ZoomIn() => ScriptRequested?.Invoke("map.zoomIn();");
+
+    [RelayCommand]
+    private void ZoomOut() => ScriptRequested?.Invoke("map.zoomOut();");
+
+    [RelayCommand]
+    private void RecenterMap() => ScriptRequested?.Invoke("centerOnIncident();");
+
     // Navigates immediately rather than awaiting the attendance-update call
     // first -- that call is already best-effort/a no-op API-side (no
     // Callsign set), so blocking the transition to the driving screen on it

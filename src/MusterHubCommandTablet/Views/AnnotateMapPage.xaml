@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="MusterHubCommandTablet.Views.AnnotateMapPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
+    x:DataType="vm:AnnotateMapViewModel"
+    Shell.NavBarIsVisible="False"
+    Padding="20">
+
+    <Grid RowDefinitions="Auto, Auto, *" RowSpacing="16">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto, *, Auto">
+            <Button Grid.Column="0" Text="&#8592; Back" Style="{StaticResource SecondaryButton}" Command="{Binding GoBackCommand}" VerticalOptions="Center" />
+            <Label Grid.Column="1" Text="Annotate map" Style="{StaticResource PageTitleLabel}" VerticalOptions="Center" Margin="16,0,0,0" />
+        </Grid>
+
+        <Border
+            Grid.Row="1"
+            IsVisible="{Binding HasError}"
+            BackgroundColor="{StaticResource StatusHazard}"
+            StrokeThickness="0"
+            StrokeShape="RoundRectangle 10"
+            Padding="16,12">
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource White}" FontAttributes="Bold" />
+        </Border>
+
+        <Grid Grid.Row="2">
+            <!-- Map stage -->
+            <Grid RowDefinitions="*, Auto" RowSpacing="12" IsVisible="{Binding IsAnnotating, Converter={StaticResource InvertedBoolConverter}}">
+                <Border Grid.Row="0" StrokeShape="RoundRectangle 8" StrokeThickness="0">
+                    <Grid>
+                        <!-- ZIndex required: see IncidentDetailPage.xaml's
+                             comment. An Android WebView left at the
+                             implicit default ZIndex paints over every
+                             later sibling in the same Grid regardless of
+                             declaration order. -->
+                        <WebView x:Name="MapWebView" Source="{Binding MapSource}" Navigated="OnMapNavigated" VerticalOptions="Fill" HorizontalOptions="Fill" ZIndex="0" />
+
+                        <!-- Replaces Leaflet's own +/- control, which
+                             index.html disables, same fix as NavigatePage/
+                             IncidentDetailPage. -->
+                        <VerticalStackLayout HorizontalOptions="Start" VerticalOptions="Start" Margin="12" Spacing="8">
+                            <Button Text="+" Style="{StaticResource MapZoomButton}" Command="{Binding ZoomInCommand}" />
+                            <Button Text="&#8722;" Style="{StaticResource MapZoomButton}" Command="{Binding ZoomOutCommand}" />
+                        </VerticalStackLayout>
+
+                        <ImageButton
+                            Source="center_incident.svg"
+                            Style="{StaticResource MapIconButton}"
+                            Command="{Binding RecenterMapCommand}"
+                            HorizontalOptions="End"
+                            VerticalOptions="Start"
+                            Margin="12">
+                            <ImageButton.Behaviors>
+                                <toolkit:IconTintColorBehavior TintColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                            </ImageButton.Behaviors>
+                        </ImageButton>
+                    </Grid>
+                </Border>
+
+                <Button Grid.Row="1" Text="Capture this view" Command="{Binding CaptureCommand}" HorizontalOptions="End" />
+            </Grid>
+
+            <!-- Annotate stage -->
+            <Grid RowDefinitions="*, Auto" RowSpacing="12" IsVisible="{Binding IsAnnotating}">
+                <Border Grid.Row="0" StrokeShape="RoundRectangle 8" StrokeThickness="0" BackgroundColor="Black">
+                    <Grid x:Name="AnnotationGrid">
+                        <Image Source="{Binding CapturedImage}" Aspect="AspectFit" />
+                        <toolkit:DrawingView
+                            x:Name="Canvas"
+                            Lines="{Binding Lines}"
+                            LineColor="{Binding SelectedColor}"
+                            LineWidth="{Binding SelectedWidth}"
+                            IsMultiLineModeEnabled="True"
+                            ShouldClearOnFinish="False"
+                            BackgroundColor="Transparent" />
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="1" ColumnDefinitions="Auto, Auto, *, Auto" ColumnSpacing="16">
+                    <HorizontalStackLayout Grid.Column="0" Spacing="8" VerticalOptions="Center">
+                        <Border Stroke="#111111" StrokeThickness="1" StrokeShape="RoundRectangle 14" WidthRequest="28" HeightRequest="28" BackgroundColor="#FF453A" Padding="0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectColorCommand}" CommandParameter="#FF453A" />
+                            </Border.GestureRecognizers>
+                        </Border>
+                        <Border Stroke="#111111" StrokeThickness="1" StrokeShape="RoundRectangle 14" WidthRequest="28" HeightRequest="28" BackgroundColor="#FFD60A" Padding="0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectColorCommand}" CommandParameter="#FFD60A" />
+                            </Border.GestureRecognizers>
+                        </Border>
+                        <Border Stroke="#111111" StrokeThickness="1" StrokeShape="RoundRectangle 14" WidthRequest="28" HeightRequest="28" BackgroundColor="#0A84FF" Padding="0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectColorCommand}" CommandParameter="#0A84FF" />
+                            </Border.GestureRecognizers>
+                        </Border>
+                        <Border Stroke="#111111" StrokeThickness="1" StrokeShape="RoundRectangle 14" WidthRequest="28" HeightRequest="28" BackgroundColor="#111111" Padding="0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectColorCommand}" CommandParameter="#111111" />
+                            </Border.GestureRecognizers>
+                        </Border>
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
+                        <Border Stroke="{StaticResource BorderLight}" StrokeThickness="1" StrokeShape="RoundRectangle 6" WidthRequest="32" HeightRequest="32" Padding="0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectWidthCommand}" CommandParameter="4" />
+                            </Border.GestureRecognizers>
+                            <Ellipse Fill="{StaticResource TextPrimaryLight}" WidthRequest="6" HeightRequest="6" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Border Stroke="{StaticResource BorderLight}" StrokeThickness="1" StrokeShape="RoundRectangle 6" WidthRequest="32" HeightRequest="32" Padding="0">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SelectWidthCommand}" CommandParameter="9" />
+                            </Border.GestureRecognizers>
+                            <Ellipse Fill="{StaticResource TextPrimaryLight}" WidthRequest="12" HeightRequest="12" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Button Text="Undo" Command="{Binding UndoCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="32" />
+                        <Button Text="Clear" Command="{Binding ClearCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="32" />
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Grid.Column="3" Spacing="8" VerticalOptions="Center">
+                        <Button Text="Back to map" Command="{Binding BackToMapCommand}" Style="{StaticResource SecondaryButton}" />
+                        <Button Text="Save to incident" Command="{Binding SaveCommand}" />
+                    </HorizontalStackLayout>
+                </Grid>
+            </Grid>
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" VerticalOptions="Center" />
+        </Grid>
+    </Grid>
+</ContentPage>
