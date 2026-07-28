@@ -74,6 +74,7 @@ function MapControls({
         <button
           type="button"
           title="Recenter"
+          aria-label="Recenter map"
           onClick={recenter}
           className="flex h-8 w-8 items-center justify-center text-body text-(--content-primary) hover:bg-(--surface-page)"
         >
@@ -83,6 +84,7 @@ function MapControls({
           <button
             type="button"
             title="Expand & annotate"
+            aria-label="Expand and annotate map"
             onClick={onAnnotate}
             className="flex h-8 w-8 items-center justify-center border-t border-(--surface-border) text-body text-(--content-primary) hover:bg-(--surface-page)"
           >

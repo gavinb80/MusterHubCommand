@@ -20,6 +20,17 @@ public interface IApiClient
     Task<(IncidentDto? Result, string? Error)> AddObjectiveAsync(Guid incidentId, string text);
     Task<(IncidentDto? Result, string? Error)> AchieveObjectiveAsync(Guid incidentId, Guid objectiveId);
     Task<(IncidentDto? Result, string? Error)> ReopenObjectiveAsync(Guid incidentId, Guid objectiveId);
+    Task<(IncidentDto? Result, string? Error)> AddRiskAsync(Guid incidentId, string description, string riskLevel, string? controlMeasure);
+    Task<(IncidentDto? Result, string? Error)> ControlRiskAsync(Guid incidentId, Guid riskId);
+    Task<(IncidentDto? Result, string? Error)> ReopenRiskAsync(Guid incidentId, Guid riskId);
+    Task<(IncidentDto? Result, string? Error)> AddBaEntryControlPointAsync(Guid incidentId, string name, string stage);
+    Task<(IncidentDto? Result, string? Error)> ClaimBaEntryControlPointAsync(Guid incidentId, Guid pointId);
+    Task<(IncidentDto? Result, string? Error)> HandOverBaEntryControlPointAsync(Guid incidentId, Guid pointId);
+    Task<(IncidentDto? Result, string? Error)> AddBaTeamAsync(
+        Guid incidentId, Guid pointId, string name, string teamLeader, string? commsChannel, string? briefing, string? equipment);
+    Task<(IncidentDto? Result, string? Error)> AddBaWearerAsync(
+        Guid incidentId, Guid pointId, Guid teamId, string name, double cylinderPressureBar, int whistleMinutes);
+    Task<(IncidentDto? Result, string? Error)> ExitBaWearerAsync(Guid incidentId, Guid pointId, Guid teamId, Guid wearerId);
     Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId);
     Task<string?> ReportLocationAsync(double latitude, double longitude);
     Task<(IncidentDto? Result, string? Error)> StartNavigationAsync(Guid incidentId);

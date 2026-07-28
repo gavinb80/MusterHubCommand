@@ -23,6 +23,10 @@ public class ApplicationDbContext(
     public DbSet<IncidentUpdate> IncidentUpdates => Set<IncidentUpdate>();
     public DbSet<IncidentSector> IncidentSectors => Set<IncidentSector>();
     public DbSet<IncidentObjective> IncidentObjectives => Set<IncidentObjective>();
+    public DbSet<IncidentRisk> IncidentRisks => Set<IncidentRisk>();
+    public DbSet<BaEntryControlPoint> BaEntryControlPoints => Set<BaEntryControlPoint>();
+    public DbSet<BaTeam> BaTeams => Set<BaTeam>();
+    public DbSet<BaWearer> BaWearers => Set<BaWearer>();
     public DbSet<IncidentAction> IncidentActions => Set<IncidentAction>();
     public DbSet<IncidentCloseType> IncidentCloseTypes => Set<IncidentCloseType>();
     public DbSet<IncidentAttachment> IncidentAttachments => Set<IncidentAttachment>();
@@ -96,6 +100,8 @@ public class ApplicationDbContext(
             e.HasMany(i => i.Updates).WithOne(u => u.Incident).HasForeignKey(u => u.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Sectors).WithOne(s => s.Incident).HasForeignKey(s => s.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Objectives).WithOne(o => o.Incident).HasForeignKey(o => o.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(i => i.Risks).WithOne(r => r.Incident).HasForeignKey(r => r.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(i => i.BaEntryControlPoints).WithOne(b => b.Incident).HasForeignKey(b => b.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Actions).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(i => i.Attachments).WithOne(a => a.Incident).HasForeignKey(a => a.IncidentId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -126,6 +132,25 @@ public class ApplicationDbContext(
             // .Include()'d or resolved for display, RaisedByName already
             // is the string to show.
             e.HasOne(o => o.RaisedByEmployee).WithMany().HasForeignKey(o => o.RaisedByEmployeeId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<IncidentRisk>(e =>
+        {
+            // Same reasoning as IncidentObjective.RaisedByEmployee -- a
+            // deleted employee shouldn't block or cascade into removing a
+            // risk log entry, and RaisedByName is already the string to show.
+            e.HasOne(r => r.RaisedByEmployee).WithMany().HasForeignKey(r => r.RaisedByEmployeeId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<BaEntryControlPoint>(e =>
+        {
+            e.HasMany(p => p.Teams).WithOne(t => t.EntryControlPoint).HasForeignKey(t => t.EntryControlPointId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(p => p.OwningDevice).WithMany().HasForeignKey(p => p.OwningDeviceId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<BaTeam>(e =>
+        {
+            e.HasMany(t => t.Wearers).WithOne(w => w.Team).HasForeignKey(w => w.TeamId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<IncidentAppliance>(e =>

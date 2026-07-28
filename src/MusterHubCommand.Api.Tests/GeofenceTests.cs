@@ -144,7 +144,7 @@ public class GeofenceTests(CommandApiFactory factory)
     {
         var (deviceToken, incidentId) = await NewDeviceAndIncidentAsync("GEOFENCE-CUSTOM-RADIUS-1");
 
-        var setRadius = await _operatorA.PutAsJsonAsync("/api/organisation-settings", new UpdateOrganisationSettingsRequest(200));
+        var setRadius = await _operatorA.PutAsJsonAsync("/api/organisation-settings", new UpdateOrganisationSettingsRequest(200, false));
         Assert.Equal(HttpStatusCode.OK, setRadius.StatusCode);
 
         // 150m away -- outside the 50m default, inside the 200m custom radius.
@@ -159,6 +159,6 @@ public class GeofenceTests(CommandApiFactory factory)
         // OrganisationSettings is a singleton row shared across the whole
         // "Api" collection's database, same caveat as every other seeded
         // table this suite works around by using fresh rows per test.
-        await _operatorA.PutAsJsonAsync("/api/organisation-settings", new UpdateOrganisationSettingsRequest(50));
+        await _operatorA.PutAsJsonAsync("/api/organisation-settings", new UpdateOrganisationSettingsRequest(50, false));
     }
 }

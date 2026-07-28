@@ -59,6 +59,8 @@ public class Incident : ITenantScoped
     public List<IncidentUpdate> Updates { get; set; } = [];
     public List<IncidentSector> Sectors { get; set; } = [];
     public List<IncidentObjective> Objectives { get; set; } = [];
+    public List<IncidentRisk> Risks { get; set; } = [];
     public List<IncidentAction> Actions { get; set; } = [];
+    public List<BaEntryControlPoint> BaEntryControlPoints { get; set; } = [];
     public List<IncidentAttachment> Attachments { get; set; } = [];
 }

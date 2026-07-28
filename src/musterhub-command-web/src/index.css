@@ -9,6 +9,16 @@ body {
   color: var(--content-primary);
 }
 
+/* One consistent, visible focus ring instead of each browser's own
+   inconsistent default -- this is a control room tool meant to be driven
+   fast under stress, keyboard included, so what's currently focused needs
+   to actually be readable at a glance. :focus-visible, not :focus, so a
+   mouse click doesn't also draw the ring. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
 /* Leaflet's own CSS assumes it can size itself from a parent with an
    explicit height -- every map mount in this app supplies one via a
    Tailwind height utility, this just keeps the tile layer from rendering

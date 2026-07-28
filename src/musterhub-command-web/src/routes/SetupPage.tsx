@@ -492,11 +492,15 @@ function GeneralTab() {
     queryFn: () => apiFetch<OrganisationSettingsDto>("/organisation-settings"),
   });
 
+  // Always sends both fields -- OrganisationSettings is one row, and a PUT
+  // that only carried the field a particular form happened to touch would
+  // silently reset every other field to its JSON default (BaEntryControlEnabled
+  // back to false on every geofence save, for instance).
   const saveMutation = useMutation({
-    mutationFn: (geofenceRadiusMeters: number) =>
+    mutationFn: (settings: { geofenceRadiusMeters: number; baEntryControlEnabled: boolean }) =>
       apiFetch<OrganisationSettingsDto>("/organisation-settings", {
         method: "PUT",
-        body: JSON.stringify({ geofenceRadiusMeters }),
+        body: JSON.stringify(settings),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["organisation-settings"] });
@@ -511,12 +515,14 @@ function GeneralTab() {
     <div className="flex flex-col gap-3">
       <p className="text-body text-(--content-secondary)">Org-wide defaults for the tablet app.</p>
       <form
-        className="flex items-end gap-2"
+        className="flex flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           const form = new FormData(e.currentTarget);
           const value = Number(form.get("geofenceRadiusMeters"));
-          if (value > 0) saveMutation.mutate(value);
+          if (value > 0) {
+            saveMutation.mutate({ geofenceRadiusMeters: value, baEntryControlEnabled: form.get("baEntryControlEnabled") === "on" });
+          }
         }}
       >
         <label className="flex flex-col gap-1 text-body text-(--content-primary)">
@@ -531,10 +537,19 @@ function GeneralTab() {
             className="w-32 rounded-lg border border-(--surface-border) px-3 py-2"
           />
         </label>
+        <label className="flex items-center gap-2 text-body text-(--content-primary)">
+          <input
+            key={String(settingsQuery.data?.baEntryControlEnabled)}
+            name="baEntryControlEnabled"
+            type="checkbox"
+            defaultChecked={settingsQuery.data?.baEntryControlEnabled ?? false}
+          />
+          BA Entry Control
+        </label>
         <button
           type="submit"
           disabled={saveMutation.isPending}
-          className="rounded-lg bg-brand-primary px-4 py-2 text-body font-semibold text-white disabled:opacity-60"
+          className="self-start rounded-lg bg-brand-primary px-4 py-2 text-body font-semibold text-white disabled:opacity-60"
         >
           Save
         </button>
@@ -542,6 +557,10 @@ function GeneralTab() {
       <p className="text-caption text-(--content-secondary)">
         When a paired tablet's reported GPS falls within this distance of an incident's location, that appliance
         is automatically marked OnScene -- no action needed from the crew.
+      </p>
+      <p className="text-caption text-(--content-secondary)">
+        BA Entry Control adds a Risk Log-adjacent tab to every incident for tracking breathing apparatus wearers
+        in and out. Off by default -- turn it on if this service runs BA boards.
       </p>
     </div>
   );

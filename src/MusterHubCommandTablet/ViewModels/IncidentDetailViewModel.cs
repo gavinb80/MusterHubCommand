@@ -18,6 +18,48 @@ public record TimelineEntry(
     bool Acknowledgeable, DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName,
     bool CanReply, string? ReplyToText);
 
+// BA Entry Control's Teams/Wearers section, flattened into one list the
+// same way TimelineEntry already flattens Updates -- a CollectionView with
+// a BindableLayout nested inside each of its own item templates (Teams
+// outer, Wearers inner) measures wrong on this MAUI version: the inner
+// list's own height doesn't reflow into its CollectionView cell once a
+// wearer's added, leaving a huge blank cell with the actual row rendered
+// off in a corner of it. One flat, single-level list sidesteps that class
+// of bug entirely rather than trying to outguess it again. Kind picks which
+// DataTemplate BaDisplayRowTemplateSelector hands out for a given row --
+// a *selector*, not one shared template with IsVisible toggles, because
+// IsVisible-hidden siblings inside a recycled CollectionView cell were
+// still leaving their measured space behind (the grey dead-space bug).
+// Team/Wearer carry whichever DTO is relevant to that Kind, null otherwise.
+// CountdownDisplay/Urgency are recomputed against ServerNow (this device's
+// clock, corrected against the server's -- see ServerNow's own comment)
+// every time BaTeamRows rebuilds, which the ViewModel's own countdownTimer
+// forces once a second while the BA tab is open -- see StartCountdownTimer.
+public record BaDisplayRow(string Kind, BaTeamDto? Team = null, BaWearerDto? Wearer = null)
+{
+    // Wearer rows only: "12:34" counting down, or "-03:21" once overdue.
+    public string? CountdownDisplay { get; init; }
+
+    // Wearer rows: "Normal" | "Warning" (<=5 min left) | "Overdue" | "Exited".
+    // TeamHeader rows: "InBa" | "Warning" (someone's due out inside 5 min) |
+    // "Overdue" | "Exited" (all wearers out) | "Empty".
+    public string Urgency { get; init; } = "Normal";
+
+    // TeamHeader rows only -- "3 in BA" / "Overdue" / "All out". Reuses
+    // Urgency as the colour key so it goes through the same
+    // StatusToColorConverter every other status pill in this app does,
+    // not a bespoke palette just for this one pill. CountdownDisplay on a
+    // TeamHeader row is that team's own earliest whistle time counting
+    // down (the soonest of its non-exited wearers), not any one wearer's.
+    public string? TeamStatusText { get; init; }
+
+    // TeamHeader rows only -- collapsed teams still show this header row
+    // (name, status, countdown, +Wearer), just none of their AddWearerForm/
+    // NoWearers/Wearer rows below it. Defaults true so a newly-created team
+    // starts open rather than needing a tap to reveal itself.
+    public bool IsExpanded { get; init; } = true;
+}
+
 // Read-only on the tablet -- crews see which sector each appliance is in,
 // but creating sectors and assigning appliances to them stays a
 // control-room action, same as attendance/status changes already are.
@@ -34,6 +76,7 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 {
     private readonly IApiClient apiClient;
     private IDispatcherTimer? refreshTimer;
+    private IDispatcherTimer? countdownTimer;
 
     public IncidentDetailViewModel(IApiClient apiClient)
     {
@@ -58,6 +101,23 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     [ObservableProperty]
     private IncidentDto? incident;
+
+    // Captured from every response's own IncidentDto.ServerNowUtc, not
+    // read once -- keeps correcting itself if this device's clock is
+    // adjusted (or just drifts) mid-session, rather than freezing whatever
+    // offset happened to be true at pairing time.
+    private TimeSpan serverClockOffset;
+
+    partial void OnIncidentChanged(IncidentDto? value)
+    {
+        if (value is not null) serverClockOffset = value.ServerNowUtc - DateTimeOffset.UtcNow;
+    }
+
+    // BA Entry Control's own "now" -- this device's clock corrected by the
+    // gap to the server's, not trusted outright. See IncidentDto.
+    // ServerNowUtc's own comment for why (Android emulators in particular
+    // can show a plausible time while the date's a day off).
+    private DateTimeOffset ServerNow => DateTimeOffset.UtcNow + serverClockOffset;
 
     public string FormattedAddress => Incident?.Address?.TrimEnd(',', ' ') ?? string.Empty;
 
@@ -100,33 +160,207 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     // independent scroll state to lose the way Timeline has.
     public List<IncidentActionDto> Actions => Incident?.Actions ?? [];
     public List<IncidentObjectiveDto> Objectives => Incident?.Objectives ?? [];
+    public List<IncidentRiskDto> Risks => Incident?.Risks ?? [];
+    public List<BaEntryControlPointDto> BaEntryControlPoints => Incident?.BaEntryControlPoints ?? [];
 
-    // Overview/Attendance, Objectives, Tasks & Requests, and Timeline used
-    // to all be visible cards stacked in a fixed-height column -- once
-    // there were three of them the page genuinely didn't fit and Timeline
-    // got squeezed to a sliver. One tab visible at a time, each getting the
-    // full remaining height, is the actual fix for that, not another
-    // ScrollView patch.
+    // A device owns at most one point at a time (see
+    // TabletIncidentsController.AddBaEntryControlPoint/Claim), so the tab
+    // never actually needs to render a *list* of points -- just this
+    // device's own one, if it has one, plus whatever else is still
+    // unclaimed for it to pick up.
+    public BaEntryControlPointDto? OwnedBaPoint => BaEntryControlPoints.FirstOrDefault(p => p.IsOwnedByThisDevice);
+    public List<BaEntryControlPointDto> UnclaimedBaPoints => BaEntryControlPoints.Where(p => !p.IsOwnedByThisDevice).ToList();
+    public bool HasOwnedBaPoint => OwnedBaPoint is not null;
+    public bool HasUnclaimedBaPoints => UnclaimedBaPoints.Count > 0;
+
+    // The point's Teams and each team's Wearers, flattened into one list --
+    // see BaDisplayRow's own comment for why. Recomputed from scratch
+    // whenever the point data, which team's add-wearer form is open, or
+    // (once a second, while the BA tab is open) the clock changes -- all
+    // three notify this via NotifyBaPointsChanged/the countdown timer.
+    public List<BaDisplayRow> BaTeamRows
+    {
+        get
+        {
+            if (OwnedBaPoint is not { } point) return [];
+            var rows = new List<BaDisplayRow>();
+            foreach (var team in point.Teams)
+            {
+                var expanded = !collapsedBaTeamIds.Contains(team.Id);
+                rows.Add(new BaDisplayRow("TeamHeader", Team: team)
+                {
+                    Urgency = TeamUrgency(team),
+                    TeamStatusText = TeamStatusText(team),
+                    CountdownDisplay = TeamEarliestWhistleCountdown(team),
+                    IsExpanded = expanded,
+                });
+                if (!expanded) continue;
+
+                if (AddingWearerForTeamId == team.Id) rows.Add(new BaDisplayRow("AddWearerForm", Team: team));
+                if (team.Wearers.Count == 0) rows.Add(new BaDisplayRow("NoWearers", Team: team));
+                foreach (var wearer in team.Wearers)
+                {
+                    var remaining = wearer.WhistleAtUtc - ServerNow;
+                    rows.Add(new BaDisplayRow("Wearer", Team: team, Wearer: wearer)
+                    {
+                        CountdownDisplay = wearer.Status == "Exited" ? $"Out {wearer.ExitedAtUtc:t}" : FormatCountdown(remaining),
+                        Urgency = wearer.Status switch
+                        {
+                            "Exited" => "Exited",
+                            "Overdue" => "Overdue",
+                            _ when remaining <= TimeSpan.FromMinutes(5) => "Warning",
+                            _ => "Normal",
+                        },
+                    });
+                }
+            }
+            return rows;
+        }
+    }
+
+    // Absence means expanded -- a newly-created team should never need a
+    // tap just to see the wearer it was created to hold.
+    private readonly HashSet<Guid> collapsedBaTeamIds = [];
+
+    [RelayCommand]
+    private void ToggleBaTeamExpanded(Guid teamId)
+    {
+        if (!collapsedBaTeamIds.Remove(teamId)) collapsedBaTeamIds.Add(teamId);
+        OnPropertyChanged(nameof(BaTeamRows));
+    }
+
+    private string TeamUrgency(BaTeamDto team)
+    {
+        if (team.Wearers.Count == 0) return "Empty";
+        if (team.Wearers.Any(w => w.Status == "Overdue")) return "Overdue";
+        var soonestInBa = team.Wearers.Where(w => w.Status == "InBa")
+            .Select(w => w.WhistleAtUtc - ServerNow)
+            .DefaultIfEmpty(TimeSpan.MaxValue).Min();
+        if (soonestInBa <= TimeSpan.FromMinutes(5)) return "Warning";
+        return team.Wearers.Any(w => w.Status == "InBa") ? "InBa" : "Exited";
+    }
+
+    private string? TeamStatusText(BaTeamDto team) => TeamUrgency(team) switch
+    {
+        "Empty" => null,
+        "Overdue" => "Overdue",
+        "Exited" => "All out",
+        _ => $"{team.Wearers.Count(w => w.Status != "Exited")} in BA",
+    };
+
+    // The team-level echo of the request: a live countdown to whoever in
+    // this team is due out soonest, not any one wearer's own timer -- null
+    // once every wearer's exited, so the header just falls back to the
+    // "All out" pill above with nothing counting down beside it.
+    private string? TeamEarliestWhistleCountdown(BaTeamDto team)
+    {
+        var soonest = team.Wearers.Where(w => w.Status != "Exited").OrderBy(w => w.WhistleAtUtc).FirstOrDefault();
+        return soonest is null ? null : FormatCountdown(soonest.WhistleAtUtc - ServerNow);
+    }
+
+    // "12:34" counting down, "-03:21" once past the whistle time -- always
+    // MM:SS, never a raw negative TimeSpan, since an ECO reads this as a
+    // countdown clock, not arithmetic.
+    private static string FormatCountdown(TimeSpan remaining)
+    {
+        var overdue = remaining < TimeSpan.Zero;
+        var magnitude = overdue ? -remaining : remaining;
+        var text = $"{(int)magnitude.TotalMinutes:00}:{magnitude.Seconds:00}";
+        return overdue ? $"-{text}" : text;
+    }
+
+    // Dashboard strip on the point header: how many are actually in BA
+    // right now, how many of those are overdue, and who's due out
+    // soonest -- the "do I need to act before I even open a team" glance.
+    public int OverdueBaCount => OwnedBaPoint?.Teams.SelectMany(t => t.Wearers).Count(w => w.Status == "Overdue") ?? 0;
+
+    public string? NextDueOutDisplay
+    {
+        get
+        {
+            var next = OwnedBaPoint?.Teams.SelectMany(t => t.Wearers)
+                .Where(w => w.Status != "Exited")
+                .OrderBy(w => w.WhistleAtUtc)
+                .FirstOrDefault();
+            if (next is null) return null;
+            var remaining = FormatCountdown(next.WhistleAtUtc - ServerNow);
+            return next.Status == "Overdue" ? $"{next.Name} overdue by {remaining[1..]}" : $"{next.Name} due out in {remaining}";
+        }
+    }
+
+    // Overview/Attendance, Objectives, Tasks & Requests, Timeline, Risk Log
+    // and BA Entry Control used to all be visible cards stacked in a
+    // fixed-height column -- once there were three of them the page
+    // genuinely didn't fit and Timeline got squeezed to a sliver. One tab
+    // visible at a time, each getting the full remaining height, is the
+    // actual fix for that, not another ScrollView patch.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOverviewSelected))]
     [NotifyPropertyChangedFor(nameof(IsObjectivesSelected))]
     [NotifyPropertyChangedFor(nameof(IsTasksSelected))]
     [NotifyPropertyChangedFor(nameof(IsTimelineSelected))]
+    [NotifyPropertyChangedFor(nameof(IsRisksSelected))]
+    [NotifyPropertyChangedFor(nameof(IsBaSelected))]
     private string selectedTab = "Overview";
 
     public bool IsOverviewSelected => SelectedTab == "Overview";
     public bool IsObjectivesSelected => SelectedTab == "Objectives";
     public bool IsTasksSelected => SelectedTab == "Tasks";
     public bool IsTimelineSelected => SelectedTab == "Timeline";
+    public bool IsRisksSelected => SelectedTab == "Risks";
+    public bool IsBaSelected => SelectedTab == "Ba";
 
     [RelayCommand]
-    private void SelectTab(string tab) => SelectedTab = tab;
+    private void SelectTab(string tab)
+    {
+        SelectedTab = tab;
+        if (IsBaSelected) StartCountdownTimer(); else StopCountdownTimer();
+    }
+
+    // A second, faster timer than refreshTimer's own 15s poll -- this one
+    // makes no network call, it just forces BaTeamRows (and the dashboard
+    // counts) to recompute against the current clock every second, so an
+    // ECO sees a live MM:SS countdown rather than a static timestamp they
+    // have to do the maths on themselves. Only ticks while the BA tab is
+    // actually open, not for the page's whole lifetime.
+    //
+    // BaTeamRows returns a brand-new List<BaDisplayRow> on every call, so
+    // notifying it every second makes the CollectionView treat its whole
+    // ItemsSource as replaced, not just updated -- it was regenerating
+    // every cell each tick, which yanked focus straight back out of
+    // whatever Entry the ECO had just tapped into (name/pressure/whistle
+    // while adding a wearer). Skipping the BaTeamRows notify while a form
+    // is actually open fixes that; the countdown just holds still for the
+    // few seconds the form's up rather than fighting the keyboard for
+    // focus, and catches up the instant it closes.
+    private void StartCountdownTimer()
+    {
+        if (countdownTimer is not null) return;
+        countdownTimer = Application.Current!.Dispatcher.CreateTimer();
+        countdownTimer.Interval = TimeSpan.FromSeconds(1);
+        countdownTimer.Tick += (_, _) =>
+        {
+            if (AddingWearerForTeamId is null && !IsAddingBaTeam && !IsAddingBaPoint)
+                OnPropertyChanged(nameof(BaTeamRows));
+            OnPropertyChanged(nameof(OverdueBaCount));
+            OnPropertyChanged(nameof(NextDueOutDisplay));
+        };
+        countdownTimer.Start();
+    }
+
+    private void StopCountdownTimer()
+    {
+        countdownTimer?.Stop();
+        countdownTimer = null;
+    }
 
     // Counts of "would you want to know this without switching tabs" --
     // not a generic item count. Recomputed wholesale alongside Actions/
-    // Objectives/Timeline in RefreshAsync.
+    // Objectives/Risks/BaEntryControlPoints/Timeline in RefreshAsync.
     public int OpenActionsCount => Actions.Count(a => a.Status == "Open");
     public int OpenObjectivesCount => Objectives.Count(o => o.Status == "Open");
+    public int IdentifiedRisksCount => Risks.Count(r => r.Status == "Identified");
+    public int InBaCount => OwnedBaPoint?.Teams.SelectMany(t => t.Wearers).Count(w => w.Status != "Exited") ?? 0;
     public int UnacknowledgedUpdateCount => Timeline.Count(e => e.Acknowledgeable && e.AcknowledgedAtUtc is null);
 
     [ObservableProperty]
@@ -149,6 +383,80 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     [ObservableProperty]
     private bool isAddingObjective;
+
+    [ObservableProperty]
+    private string riskDescription = string.Empty;
+
+    [ObservableProperty]
+    private string riskLevel = "Medium";
+
+    [ObservableProperty]
+    private string riskControlMeasure = string.Empty;
+
+    [ObservableProperty]
+    private bool isRaisingRisk;
+
+    [ObservableProperty]
+    private bool isAddingRisk;
+
+    // BA Entry Control's own add-form state (Point -> Team -> Wearer). A
+    // device only ever has one point of its own, so "is the team form
+    // open" is a plain bool -- only AddingWearerForTeamId still needs to
+    // track *which* item's form is open, since a point can genuinely run
+    // several teams at once.
+    [ObservableProperty]
+    private bool isAddingBaPoint;
+
+    [ObservableProperty]
+    private string baPointName = string.Empty;
+
+    [ObservableProperty]
+    private string baPointStage = "II";
+
+    [ObservableProperty]
+    private bool isRaisingBaPoint;
+
+    [ObservableProperty]
+    private bool isAddingBaTeam;
+
+    [ObservableProperty]
+    private string baTeamName = string.Empty;
+
+    [ObservableProperty]
+    private string baTeamLeader = string.Empty;
+
+    [ObservableProperty]
+    private string baTeamCommsChannel = string.Empty;
+
+    [ObservableProperty]
+    private string baTeamBriefing = string.Empty;
+
+    [ObservableProperty]
+    private string baTeamEquipment = string.Empty;
+
+    [ObservableProperty]
+    private bool isRaisingBaTeam;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BaTeamRows))]
+    private Guid? addingWearerForTeamId;
+
+    [ObservableProperty]
+    private string baWearerName = string.Empty;
+
+    [ObservableProperty]
+    private string baWearerCylinderPressureBar = "232";
+
+    // Minutes, not a clock time -- an ECO thinks in "how long until this
+    // cylinder's due out", not clock arithmetic; converted to the absolute
+    // WhistleAtUtc timestamp the API actually stores right before sending,
+    // same UX call the web console's own (read-only) BaBoardPanel display
+    // assumes too.
+    [ObservableProperty]
+    private string baWearerWhistleMinutes = "25";
+
+    [ObservableProperty]
+    private bool isRaisingBaWearer;
 
     // Which Timeline entry, if any, the shared note box's next Post
     // targets as a reply -- null means Post sends a plain new note.
@@ -203,6 +511,12 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MapSource))]
     private double? geofenceRadiusMeters;
+
+    // Same fetch-once-not-every-poll shape as GeofenceRadiusMeters -- gates
+    // whether the BA tab renders at all for this org, see IsBaSelected's
+    // own tab-strip XAML.
+    [ObservableProperty]
+    private bool baEntryControlEnabled;
 
     public bool HasLocation => Incident?.Latitude is not null && Incident?.Longitude is not null;
 
@@ -341,7 +655,11 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
         try
         {
             var (result, error) = await apiClient.GetOrganisationSettingsAsync();
-            if (error != ApiClient.RevokedError && result is not null) GeofenceRadiusMeters = result.GeofenceRadiusMeters;
+            if (error != ApiClient.RevokedError && result is not null)
+            {
+                GeofenceRadiusMeters = result.GeofenceRadiusMeters;
+                BaEntryControlEnabled = result.BaEntryControlEnabled;
+            }
         }
         catch (Exception ex)
         {
@@ -349,7 +667,11 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
         }
     }
 
-    public void OnDisappearing() => refreshTimer?.Stop();
+    public void OnDisappearing()
+    {
+        refreshTimer?.Stop();
+        StopCountdownTimer();
+    }
 
     [RelayCommand]
     private async Task RefreshAsync()
@@ -389,6 +711,15 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
             OnPropertyChanged(nameof(OpenActionsCount));
             OnPropertyChanged(nameof(Objectives));
             OnPropertyChanged(nameof(OpenObjectivesCount));
+            OnPropertyChanged(nameof(Risks));
+            OnPropertyChanged(nameof(IdentifiedRisksCount));
+            // Same reasoning as the countdown timer's own guard: rebuilding
+            // BaTeamRows mid-poll would regenerate the CollectionView cell
+            // an ECO's actively typing into and drop focus out from under
+            // them. The underlying Incident is still updated either way --
+            // once the form closes, the next notify (or the next poll)
+            // catches everything up.
+            if (AddingWearerForTeamId is null && !IsAddingBaTeam && !IsAddingBaPoint) NotifyBaPointsChanged();
             SyncTimeline(BuildTimeline(result));
             OnPropertyChanged(nameof(HasLocation));
             OnPropertyChanged(nameof(ShowMap));
@@ -695,6 +1026,355 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     }
 
     [RelayCommand]
+    private void ToggleAddingRisk() => IsAddingRisk = !IsAddingRisk;
+
+    [RelayCommand]
+    private void SetRiskLevel(string level) => RiskLevel = level;
+
+    // Unlike RaiseObjectiveAsync, this DOES call SyncTimeline -- raising a
+    // risk lands a Hazard entry server-side (see the API's own
+    // IncidentService.RaiseRiskAsync), so there's something new to reflect.
+    // ControlRiskAsync/ReopenRiskAsync below don't, same reasoning
+    // Objectives' own Achieve/Reopen already established.
+    [RelayCommand]
+    private async Task RaiseRiskAsync()
+    {
+        if (string.IsNullOrWhiteSpace(RiskDescription) || IsRaisingRisk) return;
+
+        IsRaisingRisk = true;
+        try
+        {
+            var (result, error) = await apiClient.AddRiskAsync(
+                IncidentId, RiskDescription.Trim(), RiskLevel,
+                string.IsNullOrWhiteSpace(RiskControlMeasure) ? null : RiskControlMeasure.Trim());
+
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is null)
+            {
+                ErrorMessage = error ?? "Couldn't add that risk. Try again.";
+                return;
+            }
+
+            ErrorMessage = string.Empty;
+            Incident = result;
+            OnPropertyChanged(nameof(Risks));
+            OnPropertyChanged(nameof(IdentifiedRisksCount));
+            SyncTimeline(BuildTimeline(result));
+            RiskDescription = string.Empty;
+            RiskLevel = "Medium";
+            RiskControlMeasure = string.Empty;
+            IsAddingRisk = false;
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+            ErrorMessage = "Something went wrong adding that risk.";
+        }
+        finally
+        {
+            IsRaisingRisk = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ControlRiskAsync(Guid riskId)
+    {
+        try
+        {
+            var (result, error) = await apiClient.ControlRiskAsync(IncidentId, riskId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                OnPropertyChanged(nameof(Risks));
+                OnPropertyChanged(nameof(IdentifiedRisksCount));
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ReopenRiskAsync(Guid riskId)
+    {
+        try
+        {
+            var (result, error) = await apiClient.ReopenRiskAsync(IncidentId, riskId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                OnPropertyChanged(nameof(Risks));
+                OnPropertyChanged(nameof(IdentifiedRisksCount));
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleAddingBaPoint() => IsAddingBaPoint = !IsAddingBaPoint;
+
+    [RelayCommand]
+    private void SetBaPointStage(string stage) => BaPointStage = stage;
+
+    private void NotifyBaPointsChanged()
+    {
+        OnPropertyChanged(nameof(BaEntryControlPoints));
+        OnPropertyChanged(nameof(OwnedBaPoint));
+        OnPropertyChanged(nameof(UnclaimedBaPoints));
+        OnPropertyChanged(nameof(HasOwnedBaPoint));
+        OnPropertyChanged(nameof(HasUnclaimedBaPoints));
+        OnPropertyChanged(nameof(InBaCount));
+        OnPropertyChanged(nameof(OverdueBaCount));
+        OnPropertyChanged(nameof(NextDueOutDisplay));
+        OnPropertyChanged(nameof(BaTeamRows));
+    }
+
+    // No SyncTimeline call anywhere in this whole Point/Team/Wearer group --
+    // BA Entry Control never touches the Timeline at all (see the API's
+    // own BaEntryControlPoint comment).
+    [RelayCommand]
+    private async Task RaiseBaPointAsync()
+    {
+        if (string.IsNullOrWhiteSpace(BaPointName) || IsRaisingBaPoint) return;
+
+        IsRaisingBaPoint = true;
+        try
+        {
+            var (result, error) = await apiClient.AddBaEntryControlPointAsync(IncidentId, BaPointName.Trim(), BaPointStage);
+
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is null)
+            {
+                ErrorMessage = error ?? "Couldn't add that entry control point. Try again.";
+                return;
+            }
+
+            ErrorMessage = string.Empty;
+            Incident = result;
+            NotifyBaPointsChanged();
+            BaPointName = string.Empty;
+            BaPointStage = "II";
+            IsAddingBaPoint = false;
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+            ErrorMessage = "Something went wrong adding that entry control point.";
+        }
+        finally
+        {
+            IsRaisingBaPoint = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ClaimBaPointAsync(Guid pointId)
+    {
+        try
+        {
+            var (result, error) = await apiClient.ClaimBaEntryControlPointAsync(IncidentId, pointId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is null)
+            {
+                ErrorMessage = error ?? "Couldn't claim that entry control point. Try again.";
+                return;
+            }
+            ErrorMessage = string.Empty;
+            Incident = result;
+            NotifyBaPointsChanged();
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+            ErrorMessage = "Something went wrong claiming that entry control point.";
+        }
+    }
+
+    [RelayCommand]
+    private async Task HandOverBaPointAsync(Guid pointId)
+    {
+        try
+        {
+            var (result, error) = await apiClient.HandOverBaEntryControlPointAsync(IncidentId, pointId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                NotifyBaPointsChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleAddingBaTeam()
+    {
+        IsAddingBaTeam = !IsAddingBaTeam;
+        BaTeamName = string.Empty;
+        BaTeamLeader = string.Empty;
+        BaTeamCommsChannel = string.Empty;
+        BaTeamBriefing = string.Empty;
+        BaTeamEquipment = string.Empty;
+    }
+
+    [RelayCommand]
+    private async Task RaiseBaTeamAsync()
+    {
+        if (string.IsNullOrWhiteSpace(BaTeamName) || string.IsNullOrWhiteSpace(BaTeamLeader) || IsRaisingBaTeam) return;
+        if (OwnedBaPoint is not { } point) return;
+
+        IsRaisingBaTeam = true;
+        try
+        {
+            var (result, error) = await apiClient.AddBaTeamAsync(
+                IncidentId, point.Id, BaTeamName.Trim(), BaTeamLeader.Trim(),
+                string.IsNullOrWhiteSpace(BaTeamCommsChannel) ? null : BaTeamCommsChannel.Trim(),
+                string.IsNullOrWhiteSpace(BaTeamBriefing) ? null : BaTeamBriefing.Trim(),
+                string.IsNullOrWhiteSpace(BaTeamEquipment) ? null : BaTeamEquipment.Trim());
+
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is null)
+            {
+                ErrorMessage = error ?? "Couldn't add that team. Try again.";
+                return;
+            }
+
+            ErrorMessage = string.Empty;
+            Incident = result;
+            NotifyBaPointsChanged();
+            IsAddingBaTeam = false;
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+            ErrorMessage = "Something went wrong adding that team.";
+        }
+        finally
+        {
+            IsRaisingBaTeam = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleAddingBaWearer(Guid teamId)
+    {
+        AddingWearerForTeamId = AddingWearerForTeamId == teamId ? null : teamId;
+        BaWearerName = string.Empty;
+        BaWearerCylinderPressureBar = "232";
+        BaWearerWhistleMinutes = "25";
+        // Opening the form on a collapsed team should actually show it,
+        // not silently do nothing because its rows aren't in BaTeamRows.
+        if (AddingWearerForTeamId == teamId) collapsedBaTeamIds.Remove(teamId);
+    }
+
+    [RelayCommand]
+    private async Task RaiseBaWearerAsync(Guid teamId)
+    {
+        if (string.IsNullOrWhiteSpace(BaWearerName) || IsRaisingBaWearer) return;
+        if (!double.TryParse(BaWearerCylinderPressureBar, out var pressure) || !int.TryParse(BaWearerWhistleMinutes, out var minutes)) return;
+        if (OwnedBaPoint is not { } point) return;
+
+        IsRaisingBaWearer = true;
+        try
+        {
+            // minutes, not a DateTimeOffset this device computed -- see
+            // AddBaWearerRequest's own comment for why: the server
+            // resolves the actual WhistleAtUtc against its own clock.
+            var (result, error) = await apiClient.AddBaWearerAsync(
+                IncidentId, point.Id, teamId, BaWearerName.Trim(), pressure, minutes);
+
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is null)
+            {
+                ErrorMessage = error ?? "Couldn't add that wearer. Try again.";
+                return;
+            }
+
+            ErrorMessage = string.Empty;
+            Incident = result;
+            NotifyBaPointsChanged();
+            AddingWearerForTeamId = null;
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+            ErrorMessage = "Something went wrong adding that wearer.";
+        }
+        finally
+        {
+            IsRaisingBaWearer = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExitBaWearerAsync(Guid wearerId)
+    {
+        if (OwnedBaPoint is not { } point) return;
+        var team = point.Teams.FirstOrDefault(t => t.Wearers.Any(w => w.Id == wearerId));
+        if (team is null) return;
+
+        try
+        {
+            var (result, error) = await apiClient.ExitBaWearerAsync(IncidentId, point.Id, team.Id, wearerId);
+            if (error == ApiClient.RevokedError)
+            {
+                await Shell.Current.GoToAsync("//pairing");
+                return;
+            }
+            if (result is not null)
+            {
+                Incident = result;
+                NotifyBaPointsChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            SentrySdk.CaptureException(ex);
+        }
+    }
+
+    [RelayCommand]
     private async Task GoBackAsync() => await Shell.Current.GoToAsync("..");
 
     [RelayCommand]
@@ -777,6 +1457,7 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
     public void Dispose()
     {
         if (refreshTimer is not null) refreshTimer.Stop();
+        StopCountdownTimer();
         GC.SuppressFinalize(this);
     }
 }

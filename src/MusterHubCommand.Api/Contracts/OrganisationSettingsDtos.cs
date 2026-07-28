@@ -1,5 +1,5 @@
 namespace MusterHubCommand.Api.Contracts;
 
-public record OrganisationSettingsDto(double GeofenceRadiusMeters);
+public record OrganisationSettingsDto(double GeofenceRadiusMeters, bool BaEntryControlEnabled);
 
-public record UpdateOrganisationSettingsRequest(double GeofenceRadiusMeters);
+public record UpdateOrganisationSettingsRequest(double GeofenceRadiusMeters, bool BaEntryControlEnabled);
