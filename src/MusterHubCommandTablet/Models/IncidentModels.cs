@@ -32,6 +32,37 @@ public record IncidentObjectiveDto(
 
 public record AddObjectiveRequest(string Text);
 
+// RaisedByName/ReviewedByName are always the caller's own resolved identity
+// -- see the API's own IncidentRiskDto comment. Unlike an objective,
+// raising a risk also lands a Hazard entry in the Timeline.
+public record IncidentRiskDto(
+    Guid Id, string Description, string RiskLevel, string? ControlMeasure, string Status, string Source,
+    string RaisedByName, Guid? RaisedByEmployeeId,
+    DateTimeOffset? ReviewedAtUtc, string? ReviewedByName, DateTimeOffset CreatedAtUtc);
+
+public record AddRiskRequest(string Description, string RiskLevel, string? ControlMeasure);
+
+// Status isn't stored -- Overdue is computed server-side at read time, see
+// the API's own BaWearerDto comment.
+public record BaWearerDto(
+    Guid Id, string Name, double CylinderPressureBar,
+    DateTimeOffset EnteredAtUtc, DateTimeOffset WhistleAtUtc, DateTimeOffset? ExitedAtUtc, string Status);
+
+public record BaTeamDto(
+    Guid Id, string Name, string TeamLeader, string? CommsChannel, string? Briefing, string? Equipment,
+    List<BaWearerDto> Wearers);
+
+public record BaEntryControlPointDto(Guid Id, string Name, string Stage, bool IsOwnedByThisDevice, List<BaTeamDto> Teams);
+
+public record AddBaEntryControlPointRequest(string Name, string Stage);
+
+public record AddBaTeamRequest(string Name, string TeamLeader, string? CommsChannel = null, string? Briefing = null, string? Equipment = null);
+
+// WhistleMinutes, not an absolute WhistleAtUtc -- resolved against the
+// server's own clock, not this device's (which isn't trustworthy enough
+// to compute a timestamp that gets persisted; Android emulators drift).
+public record AddBaWearerRequest(string Name, double CylinderPressureBar, int WhistleMinutes);
+
 // AssignedToName/RaisedByName are always the display name -- resolved
 // server-side the same way IncidentSectorDto.PersonInChargeName is.
 public record IncidentActionDto(
@@ -41,14 +72,19 @@ public record IncidentActionDto(
     DateTimeOffset? AcknowledgedAtUtc, string? AcknowledgedByName,
     DateTimeOffset? ResolvedAtUtc, string? ResolvedByName, DateTimeOffset CreatedAtUtc);
 
+// ServerNowUtc -- see IncidentDetailViewModel.ServerNow's own comment:
+// this device's clock isn't trustworthy enough on its own for BA Entry
+// Control's live countdowns, so every response carries the server's own
+// idea of "now" to correct against.
 public record IncidentDto(
     Guid Id, string ExternalReference, string IncidentType, string? Description,
     string? Address, double? Latitude, double? Longitude,
     Guid OrgUnitId, string OrgUnitName, string Status,
     DateTimeOffset StartedAtUtc, DateTimeOffset? ClosedAtUtc, DateTimeOffset UpdatedAtUtc,
     List<IncidentApplianceDto> Appliances, List<IncidentUpdateDto> Updates,
-    List<IncidentSectorDto> Sectors, List<IncidentObjectiveDto> Objectives, List<IncidentActionDto> Actions,
-    List<IncidentAttachmentDto> Attachments);
+    List<IncidentSectorDto> Sectors, List<IncidentObjectiveDto> Objectives, List<IncidentRiskDto> Risks,
+    List<IncidentActionDto> Actions, List<BaEntryControlPointDto> BaEntryControlPoints, List<IncidentAttachmentDto> Attachments,
+    DateTimeOffset ServerNowUtc);
 
 public record IncidentAttachmentDto(
     Guid Id, string FileName, string ContentType, long SizeBytes,
@@ -74,6 +110,6 @@ public record RouteResponseDto(
 
 public record UpdateDeviceLocationRequest(double Latitude, double Longitude);
 
-public record OrganisationSettingsDto(double GeofenceRadiusMeters);
+public record OrganisationSettingsDto(double GeofenceRadiusMeters, bool BaEntryControlEnabled);
 
 public record TabletDeviceDto(string? Callsign);

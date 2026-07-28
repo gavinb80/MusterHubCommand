@@ -26,7 +26,8 @@ public class OrganisationSettingsController(
         if (await RequireOperatorAsync() is ActionResult denied) return denied;
 
         var settings = await db.OrganisationSettings.FirstOrDefaultAsync();
-        return Ok(new OrganisationSettingsDto(settings?.GeofenceRadiusMeters ?? DefaultGeofenceRadiusMeters));
+        return Ok(new OrganisationSettingsDto(
+            settings?.GeofenceRadiusMeters ?? DefaultGeofenceRadiusMeters, settings?.BaEntryControlEnabled ?? false));
     }
 
     [HttpPut]
@@ -38,14 +39,20 @@ public class OrganisationSettingsController(
         var settings = await db.OrganisationSettings.FirstOrDefaultAsync();
         if (settings is null)
         {
-            settings = new OrganisationSettings { OrganisationId = OrganisationId, GeofenceRadiusMeters = request.GeofenceRadiusMeters };
+            settings = new OrganisationSettings
+            {
+                OrganisationId = OrganisationId,
+                GeofenceRadiusMeters = request.GeofenceRadiusMeters,
+                BaEntryControlEnabled = request.BaEntryControlEnabled,
+            };
             db.OrganisationSettings.Add(settings);
         }
         else
         {
             settings.GeofenceRadiusMeters = request.GeofenceRadiusMeters;
+            settings.BaEntryControlEnabled = request.BaEntryControlEnabled;
         }
         await db.SaveChangesAsync();
-        return Ok(new OrganisationSettingsDto(settings.GeofenceRadiusMeters));
+        return Ok(new OrganisationSettingsDto(settings.GeofenceRadiusMeters, settings.BaEntryControlEnabled));
     }
 }

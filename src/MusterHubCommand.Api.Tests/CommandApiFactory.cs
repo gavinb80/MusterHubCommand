@@ -169,6 +169,15 @@ public static class Seed
     public static readonly Guid DeviceB = Guid.Parse("bbbbbbbb-6666-0000-0000-000000000001");
     public const string DeviceACallsign = "KV57P1";
 
+    // A second OrgA device, also attending IncidentA, so BA Entry Control's
+    // per-device point ownership (one point per device, claim/hand-over
+    // between devices) can be tested against two devices actually allowed
+    // to see the same incident -- DeviceB is a different org entirely and
+    // can't stand in for this.
+    public const string DeviceA2TokenPlaintext = "test-device-token-org-a-2";
+    public static readonly Guid DeviceA2 = Guid.Parse("aaaaaaaa-6666-0000-0000-000000000002");
+    public const string DeviceA2Callsign = "KV57P9";
+
     public static async Task ApplyAsync(ApplicationDbContext db)
     {
         db.OrgUnitTypes.AddRange(
@@ -203,6 +212,7 @@ public static class Seed
             new EmployeeStationAssignment { OrganisationId = OrgB, EmployeeId = OperatorBEmployee, OrgUnitId = StationB, IsHome = true });
 
         db.Devices.Add(new Device { Id = DeviceA, OrganisationId = OrgA, OrgUnitId = StationA, Label = "Engine 1 (A)", Callsign = DeviceACallsign, TokenHash = SecretHasher.Hash(DeviceATokenPlaintext) });
+        db.Devices.Add(new Device { Id = DeviceA2, OrganisationId = OrgA, OrgUnitId = StationA, Label = "Engine 2 (A)", Callsign = DeviceA2Callsign, TokenHash = SecretHasher.Hash(DeviceA2TokenPlaintext) });
         db.Devices.Add(new Device { Id = DeviceB, OrganisationId = OrgB, OrgUnitId = StationB, Label = "Engine 1 (B)", TokenHash = SecretHasher.Hash(DeviceBTokenPlaintext) });
 
         db.IntegrationApiKeys.Add(new IntegrationApiKey { OrganisationId = OrgA, Label = "Vision (A)", KeyHash = SecretHasher.Hash(IntegrationKeyAPlaintext) });
@@ -224,6 +234,7 @@ public static class Seed
         // (see TabletIncidentsController.AttendedByThisDevice), so tests
         // that expect DeviceA to see IncidentA need this to actually hold.
         db.IncidentAppliances.Add(new IncidentAppliance { IncidentId = IncidentA, Callsign = DeviceACallsign });
+        db.IncidentAppliances.Add(new IncidentAppliance { IncidentId = IncidentA, Callsign = DeviceA2Callsign });
 
         await db.SaveChangesAsync();
     }

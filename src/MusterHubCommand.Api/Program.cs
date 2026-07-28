@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Tokens;
 using MusterHubCommand.Api.Configuration;
 using MusterHubCommand.Api.Data;
+using MusterHubCommand.Api.Hubs;
 using MusterHubCommand.Api.Routing;
 using MusterHubCommand.Api.Services;
 
@@ -27,6 +28,7 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Sentry:Dsn"]))
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
+builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<OrgUnitPathInterceptor>();
 builder.Services.AddDbContext<ApplicationDbContext>((services, options) =>
@@ -144,6 +146,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1),
         };
+        // Browsers can't set an Authorization header on a WebSocket
+        // handshake, so the SignalR JS client passes the token as a query
+        // string param instead (see IncidentHub) -- standard ASP.NET Core
+        // pattern, scoped to the hub path only so every other JWT-bearer
+        // request still needs a real header.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.Request.Path.StartsWithSegments("/hubs") &&
+                    context.Request.Query.TryGetValue("access_token", out var token))
+                {
+                    context.Token = token;
+                }
+                return Task.CompletedTask;
+            },
+        };
     })
     // The tablet's parallel scheme -- registered alongside JWT bearer, never
     // the default, only ever reached via DeviceControllerBase's explicit
@@ -203,6 +222,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<IncidentHub>("/hubs/incidents");
 app.MapHealthChecks("/health");
 
 // The built React app (musterhub-command-web -- the control-room console

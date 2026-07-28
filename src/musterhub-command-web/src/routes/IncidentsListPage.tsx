@@ -1,11 +1,12 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Dialog from "@radix-ui/react-dialog";
 import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import { LocationPicker } from "../components/LocationPicker";
-import type { CreateIncidentRequest, GeocodeResponseDto, IncidentDto, IncidentSummaryDto, OrgUnitDto } from "../api/types";
+import { useIncidentHub } from "../hooks/useIncidentHub";
+import type { CreateIncidentRequest, GeocodeResponseDto, IncidentDto, IncidentSummaryDto, MeResponse, OrgUnitDto } from "../api/types";
 
 const STATUS_STYLES: Record<string, string> = {
   Open: "bg-status-open/15 text-status-open",
@@ -19,6 +20,26 @@ function StatusPill({ status }: { status: string }) {
       {status}
     </span>
   );
+}
+
+// "42m ago" while an incident's genuinely recent -- ticking every 30s is
+// enough, this isn't a stopwatch. Falls back to an absolute date/time past
+// a day so a week-old closed incident in the "All" view doesn't read as a
+// meaningless "6d ago".
+function ElapsedTime({ startedAtUtc }: { startedAtUtc: string }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const started = new Date(startedAtUtc).getTime();
+  const minutes = Math.max(0, Math.round((now - started) / 60_000));
+
+  if (minutes >= 24 * 60) return <>{new Date(startedAtUtc).toLocaleString()}</>;
+  if (minutes < 60) return <>{minutes}m ago</>;
+  return <>{Math.floor(minutes / 60)}h {minutes % 60}m ago</>;
 }
 
 function NewIncidentDialog({ stations }: { stations: OrgUnitDto[] }) {
@@ -145,26 +166,46 @@ function NewIncidentDialog({ stations }: { stations: OrgUnitDto[] }) {
 
 export function IncidentsListPage() {
   const [activeOnly, setActiveOnly] = useState(true);
+  const [search, setSearch] = useState("");
+  const [stationFilter, setStationFilter] = useState("");
 
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
+  // 60s here is a fallback, not the primary path -- useIncidentHub below
+  // pushes a refetch the moment any incident in the org actually changes.
   const incidentsQuery = useQuery({
     queryKey: ["incidents", activeOnly],
     queryFn: () => apiFetch<IncidentSummaryDto[]>(`/incidents?activeOnly=${activeOnly}`),
-    refetchInterval: 20_000,
+    refetchInterval: 60_000,
   });
+  const liveConnected = useIncidentHub(meQuery.data?.organisationId);
   const stationsQuery = useQuery({
     queryKey: ["org-units"],
     queryFn: () => apiFetch<OrgUnitDto[]>("/org-units"),
   });
   const stations = (stationsQuery.data ?? []).filter((u) => u.orgUnitTypeName === "Station");
 
+  // Client-side -- the list isn't large enough yet to warrant a server-side
+  // search endpoint.
+  const normalizedSearch = search.trim().toLowerCase();
+  const visibleIncidents = (incidentsQuery.data ?? [])
+    .filter((i) => stationFilter === "" || i.orgUnitId === stationFilter)
+    .filter((i) => normalizedSearch === "" || [i.incidentType, i.address, i.orgUnitName]
+      .some((field) => field?.toLowerCase().includes(normalizedSearch)));
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-page-title font-semibold text-(--content-primary)">Incidents</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-page-title font-semibold text-(--content-primary)">Incidents</h1>
+          <span
+            title={liveConnected ? "Live" : "Reconnecting..."}
+            className={`h-2 w-2 rounded-full ${liveConnected ? "bg-status-on-scene" : "bg-(--content-secondary)"}`}
+          />
+        </div>
         <NewIncidentDialog stations={stations} />
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setActiveOnly(true)}
@@ -179,6 +220,22 @@ export function IncidentsListPage() {
         >
           All
         </button>
+        <select
+          value={stationFilter}
+          onChange={(e) => setStationFilter(e.target.value)}
+          aria-label="Filter by station"
+          className="rounded-lg border border-(--surface-border) px-3 py-1.5 text-body text-(--content-primary)"
+        >
+          <option value="">All stations</option>
+          {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search type, address, station..."
+          aria-label="Search incidents"
+          className="flex-1 min-w-48 rounded-lg border border-(--surface-border) px-3 py-1.5 text-body text-(--content-primary)"
+        />
       </div>
 
       {incidentsQuery.isLoading && <p className="text-body text-(--content-secondary)">Loading...</p>}
@@ -187,9 +244,12 @@ export function IncidentsListPage() {
           {activeOnly ? "No active incidents." : "No incidents yet."}
         </p>
       )}
+      {incidentsQuery.data && incidentsQuery.data.length > 0 && visibleIncidents.length === 0 && (
+        <p className="text-body text-(--content-secondary)">Nothing matches that search/filter.</p>
+      )}
 
       <div className="flex flex-col gap-2">
-        {incidentsQuery.data?.map((incident) => (
+        {visibleIncidents.map((incident) => (
           <Link
             key={incident.id}
             to={`/incidents/${incident.id}`}
@@ -205,7 +265,7 @@ export function IncidentsListPage() {
               </p>
             </div>
             <span className="text-caption text-(--content-secondary)">
-              {new Date(incident.startedAtUtc).toLocaleString()}
+              <ElapsedTime startedAtUtc={incident.startedAtUtc} />
             </span>
           </Link>
         ))}

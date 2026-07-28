@@ -38,7 +38,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
     {
         var incident = await incidentService.FindByIdAsync(OrganisationId, id);
         if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
-        return Ok(await incident.ToDtoWithLocationsAsync(db));
+        return Ok(await incident.ToDtoWithLocationsAsync(db, DeviceId));
     }
 
     [HttpPost("{id}/notes")]
@@ -57,7 +57,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
             var updated = await incidentService.AddUpdateAsync(
                 OrganisationId, id, IncidentUpdateSource.Crew,
                 DeviceCallsign, request.AuthorEmployeeId, request.Text, IncidentUpdateType.Note, request.ReplyToUpdateId);
-            return Ok(updated!.ToDto());
+            return Ok(updated!.ToDto(DeviceId));
         }
         catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
@@ -69,7 +69,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
 
         var updated = await incidentService.AcknowledgeUpdateAsync(OrganisationId, id, updateId, DeviceCallsign!);
-        return Ok((updated ?? incident).ToDto());
+        return Ok((updated ?? incident).ToDto(DeviceId));
     }
 
     // Same shape as the notes endpoint above -- device callsign as the
@@ -87,7 +87,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
                 OrganisationId, id, request.Kind, request.Text.Trim(), IncidentUpdateSource.Crew,
                 DeviceCallsign, null,
                 request.AssignedToEmployeeId, request.AssignedToName, request.SectorId);
-            return Ok(updated!.ToDto());
+            return Ok(updated!.ToDto(DeviceId));
         }
         catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
@@ -99,7 +99,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
 
         var updated = await incidentService.AcknowledgeActionAsync(OrganisationId, id, actionId, DeviceCallsign!);
-        return Ok((updated ?? incident).ToDto());
+        return Ok((updated ?? incident).ToDto(DeviceId));
     }
 
     [HttpPost("{id}/actions/{actionId}/resolve")]
@@ -111,7 +111,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         try
         {
             var updated = await incidentService.ResolveActionAsync(OrganisationId, id, actionId, request.Status, DeviceCallsign!);
-            return Ok((updated ?? incident).ToDto());
+            return Ok((updated ?? incident).ToDto(DeviceId));
         }
         catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
@@ -125,7 +125,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
 
         var updated = await incidentService.RaiseObjectiveAsync(
             OrganisationId, id, request.Text.Trim(), IncidentUpdateSource.Crew, DeviceCallsign!, null);
-        return Ok(updated!.ToDto());
+        return Ok(updated!.ToDto(DeviceId));
     }
 
     [HttpPost("{id}/objectives/{objectiveId}/achieve")]
@@ -135,7 +135,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
 
         var updated = await incidentService.AchieveObjectiveAsync(OrganisationId, id, objectiveId, DeviceCallsign!);
-        return Ok((updated ?? incident).ToDto());
+        return Ok((updated ?? incident).ToDto(DeviceId));
     }
 
     [HttpPost("{id}/objectives/{objectiveId}/reopen")]
@@ -145,7 +145,132 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
 
         var updated = await incidentService.ReopenObjectiveAsync(OrganisationId, id, objectiveId);
-        return Ok((updated ?? incident).ToDto());
+        return Ok((updated ?? incident).ToDto(DeviceId));
+    }
+
+    [HttpPost("{id}/risks")]
+    public async Task<ActionResult<IncidentDto>> AddRisk(Guid id, AddRiskRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Description)) return BadRequest("Description is required.");
+
+        var updated = await incidentService.RaiseRiskAsync(
+            OrganisationId, id, request.Description.Trim(), request.RiskLevel, request.ControlMeasure?.Trim(),
+            IncidentUpdateSource.Crew, DeviceCallsign!, null);
+        return Ok(updated!.ToDto(DeviceId));
+    }
+
+    [HttpPost("{id}/risks/{riskId}/control")]
+    public async Task<ActionResult<IncidentDto>> ControlRisk(Guid id, Guid riskId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        var updated = await incidentService.ControlRiskAsync(OrganisationId, id, riskId, DeviceCallsign!);
+        return Ok((updated ?? incident).ToDto(DeviceId));
+    }
+
+    [HttpPost("{id}/risks/{riskId}/reopen")]
+    public async Task<ActionResult<IncidentDto>> ReopenRisk(Guid id, Guid riskId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+
+        var updated = await incidentService.ReopenRiskAsync(OrganisationId, id, riskId);
+        return Ok((updated ?? incident).ToDto(DeviceId));
+    }
+
+    // Full BA Entry Control write surface lives here, not on the web
+    // console's IncidentsController -- the ECO is physically at the entry
+    // control point with a tablet, not a remote operator; the web console
+    // only ever reads this data (see IncidentDto.BaEntryControlPoints).
+    [HttpPost("{id}/ba-points")]
+    public async Task<ActionResult<IncidentDto>> AddBaEntryControlPoint(Guid id, AddBaEntryControlPointRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (!await IsBaEntryControlEnabledAsync()) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("Name is required.");
+        // A tablet is physically at one entry control point, not several --
+        // hand the current one over before starting another.
+        if (incident.BaEntryControlPoints.Any(p => p.OwningDeviceId == DeviceId))
+            return BadRequest("This device already has an entry control point. Hand it over before creating another.");
+
+        var updated = await incidentService.AddBaEntryControlPointAsync(OrganisationId, id, request.Name.Trim(), request.Stage, DeviceId);
+        return Ok(updated!.ToDto(DeviceId));
+    }
+
+    [HttpPost("{id}/ba-points/{pointId}/claim")]
+    public async Task<ActionResult<IncidentDto>> ClaimBaEntryControlPoint(Guid id, Guid pointId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (!await IsBaEntryControlEnabledAsync()) return NotFound();
+        if (incident.BaEntryControlPoints.Any(p => p.OwningDeviceId == DeviceId))
+            return BadRequest("This device already has an entry control point. Hand it over before claiming another.");
+
+        var updated = await incidentService.ClaimBaEntryControlPointAsync(OrganisationId, id, pointId, DeviceId);
+        return Ok((updated ?? incident).ToDto(DeviceId));
+    }
+
+    [HttpPost("{id}/ba-points/{pointId}/hand-over")]
+    public async Task<ActionResult<IncidentDto>> HandOverBaEntryControlPoint(Guid id, Guid pointId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (!await IsBaEntryControlEnabledAsync()) return NotFound();
+
+        var updated = await incidentService.HandOverBaEntryControlPointAsync(OrganisationId, id, pointId, DeviceId);
+        return Ok((updated ?? incident).ToDto(DeviceId));
+    }
+
+    [HttpPost("{id}/ba-points/{pointId}/teams")]
+    public async Task<ActionResult<IncidentDto>> AddBaTeam(Guid id, Guid pointId, AddBaTeamRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (!await IsBaEntryControlEnabledAsync()) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("Name is required.");
+        if (string.IsNullOrWhiteSpace(request.TeamLeader)) return BadRequest("Team leader is required.");
+
+        var updated = await incidentService.AddBaTeamAsync(
+            OrganisationId, id, pointId, request.Name.Trim(), request.TeamLeader.Trim(),
+            request.CommsChannel?.Trim(), request.Briefing?.Trim(), request.Equipment?.Trim(), DeviceId);
+        return Ok((updated ?? incident).ToDto(DeviceId));
+    }
+
+    [HttpPost("{id}/ba-points/{pointId}/teams/{teamId}/wearers")]
+    public async Task<ActionResult<IncidentDto>> AddBaWearer(Guid id, Guid pointId, Guid teamId, AddBaWearerRequest request)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (!await IsBaEntryControlEnabledAsync()) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("Name is required.");
+
+        var updated = await incidentService.AddBaWearerAsync(
+            OrganisationId, id, teamId, request.Name.Trim(), request.CylinderPressureBar, request.WhistleMinutes, DeviceId);
+        return Ok((updated ?? incident).ToDto(DeviceId));
+    }
+
+    [HttpPost("{id}/ba-points/{pointId}/teams/{teamId}/wearers/{wearerId}/exit")]
+    public async Task<ActionResult<IncidentDto>> ExitBaWearer(Guid id, Guid pointId, Guid teamId, Guid wearerId)
+    {
+        var incident = await incidentService.FindByIdAsync(OrganisationId, id);
+        if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
+        if (!await IsBaEntryControlEnabledAsync()) return NotFound();
+
+        var updated = await incidentService.ExitBaWearerAsync(OrganisationId, id, wearerId, DeviceId);
+        return Ok((updated ?? incident).ToDto(DeviceId));
+    }
+
+    // Same defensive IgnoreQueryFilters + explicit OrganisationId pattern
+    // as IncidentsController's own copy of this check.
+    private async Task<bool> IsBaEntryControlEnabledAsync()
+    {
+        var settings = await db.OrganisationSettings.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.OrganisationId == OrganisationId);
+        return settings?.BaEntryControlEnabled ?? false;
     }
 
     // From this device's own last-reported GPS to the incident, using
@@ -179,7 +304,7 @@ public class TabletIncidentsController(IncidentService incidentService, Applicat
         if (incident is null || !AttendedByThisDevice(incident)) return NotFound();
 
         var updated = await incidentService.SetSingleApplianceStatusAsync(OrganisationId, id, DeviceCallsign!, ApplianceStatus.EnRoute);
-        return Ok((updated ?? incident).ToDto());
+        return Ok((updated ?? incident).ToDto(DeviceId));
     }
 
     [HttpPost("{id}/attachments")]

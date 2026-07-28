@@ -167,6 +167,15 @@ public class IncidentsController(
         catch (IncidentValidationException ex) { return BadRequest(ex.Message); }
     }
 
+    [HttpPatch("{id}/appliances/{applianceId}/status")]
+    public async Task<ActionResult<IncidentDto>> SetApplianceStatus(Guid id, Guid applianceId, SetApplianceStatusRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var updated = await incidentService.SetApplianceStatusAsync(OrganisationId, id, applianceId, request.Status);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
     [HttpPatch("{id}/appliances/{applianceId}/resource-kind")]
     public async Task<ActionResult<IncidentDto>> SetApplianceResourceKind(Guid id, Guid applianceId, SetResourceKindRequest request)
     {
@@ -279,6 +288,44 @@ public class IncidentsController(
         var updated = await incidentService.ReopenObjectiveAsync(OrganisationId, id, objectiveId);
         return updated is null ? NotFound() : Ok(updated.ToDto());
     }
+
+    [HttpPost("{id}/risks")]
+    public async Task<ActionResult<IncidentDto>> AddRisk(Guid id, AddRiskRequest request)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+        if (string.IsNullOrWhiteSpace(request.Description)) return BadRequest("Description is required.");
+
+        var (name, employeeId) = await ResolveCallerAsync();
+        var updated = await incidentService.RaiseRiskAsync(
+            OrganisationId, id, request.Description.Trim(), request.RiskLevel, request.ControlMeasure?.Trim(),
+            IncidentUpdateSource.ControlRoom, name, employeeId);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPost("{id}/risks/{riskId}/control")]
+    public async Task<ActionResult<IncidentDto>> ControlRisk(Guid id, Guid riskId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var (name, _) = await ResolveCallerAsync();
+        var updated = await incidentService.ControlRiskAsync(OrganisationId, id, riskId, name);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    [HttpPost("{id}/risks/{riskId}/reopen")]
+    public async Task<ActionResult<IncidentDto>> ReopenRisk(Guid id, Guid riskId)
+    {
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
+
+        var updated = await incidentService.ReopenRiskAsync(OrganisationId, id, riskId);
+        return updated is null ? NotFound() : Ok(updated.ToDto());
+    }
+
+    // No write endpoints for BA Entry Control here -- the web console only
+    // ever reads it (already covered by GET /{id}'s own IncidentDto.BaEntryControlPoints).
+    // The ECO is physically at the entry control point with a tablet, not
+    // a remote control-room operator, so every create/exit action for a
+    // BA board lives on TabletIncidentsController instead.
 
     // RaisedByName/AchievedByName on an objective are always the caller's
     // own identity, never a caller-supplied field -- see

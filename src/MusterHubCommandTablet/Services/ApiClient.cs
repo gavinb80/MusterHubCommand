@@ -69,6 +69,38 @@ public class ApiClient(HttpClient httpClient, IDeviceTokenStore tokenStore) : IA
     public Task<(IncidentDto? Result, string? Error)> ReopenObjectiveAsync(Guid incidentId, Guid objectiveId) =>
         PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/objectives/{objectiveId}/reopen");
 
+    public Task<(IncidentDto? Result, string? Error)> AddRiskAsync(Guid incidentId, string description, string riskLevel, string? controlMeasure) =>
+        PostAsync<AddRiskRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/risks", new AddRiskRequest(description, riskLevel, controlMeasure));
+
+    public Task<(IncidentDto? Result, string? Error)> ControlRiskAsync(Guid incidentId, Guid riskId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/risks/{riskId}/control");
+
+    public Task<(IncidentDto? Result, string? Error)> ReopenRiskAsync(Guid incidentId, Guid riskId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/risks/{riskId}/reopen");
+
+    public Task<(IncidentDto? Result, string? Error)> AddBaEntryControlPointAsync(Guid incidentId, string name, string stage) =>
+        PostAsync<AddBaEntryControlPointRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/ba-points",
+            new AddBaEntryControlPointRequest(name, stage));
+
+    public Task<(IncidentDto? Result, string? Error)> ClaimBaEntryControlPointAsync(Guid incidentId, Guid pointId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/ba-points/{pointId}/claim");
+
+    public Task<(IncidentDto? Result, string? Error)> HandOverBaEntryControlPointAsync(Guid incidentId, Guid pointId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/ba-points/{pointId}/hand-over");
+
+    public Task<(IncidentDto? Result, string? Error)> AddBaTeamAsync(
+        Guid incidentId, Guid pointId, string name, string teamLeader, string? commsChannel, string? briefing, string? equipment) =>
+        PostAsync<AddBaTeamRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/ba-points/{pointId}/teams",
+            new AddBaTeamRequest(name, teamLeader, commsChannel, briefing, equipment));
+
+    public Task<(IncidentDto? Result, string? Error)> AddBaWearerAsync(
+        Guid incidentId, Guid pointId, Guid teamId, string name, double cylinderPressureBar, int whistleMinutes) =>
+        PostAsync<AddBaWearerRequest, IncidentDto>($"api/tablet/incidents/{incidentId}/ba-points/{pointId}/teams/{teamId}/wearers",
+            new AddBaWearerRequest(name, cylinderPressureBar, whistleMinutes));
+
+    public Task<(IncidentDto? Result, string? Error)> ExitBaWearerAsync(Guid incidentId, Guid pointId, Guid teamId, Guid wearerId) =>
+        PostNoBodyAsync<IncidentDto>($"api/tablet/incidents/{incidentId}/ba-points/{pointId}/teams/{teamId}/wearers/{wearerId}/exit");
+
     public Task<(RouteResponseDto? Result, string? Error)> GetRouteAsync(Guid incidentId) =>
         GetAsync<RouteResponseDto>($"api/tablet/incidents/{incidentId}/route");
 

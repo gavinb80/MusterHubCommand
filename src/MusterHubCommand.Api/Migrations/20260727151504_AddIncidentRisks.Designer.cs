@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MusterHubCommand.Api.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MusterHubCommand.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260727151504_AddIncidentRisks")]
+    partial class AddIncidentRisks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -22,105 +25,6 @@ namespace MusterHubCommand.Api.Migrations
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "ltree");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.BaEntryControlPoint", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("IncidentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("OwningDeviceId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Stage")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IncidentId");
-
-                    b.HasIndex("OwningDeviceId");
-
-                    b.ToTable("BaEntryControlPoints");
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.BaTeam", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Briefing")
-                        .HasColumnType("text");
-
-                    b.Property<string>("CommsChannel")
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("EntryControlPointId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Equipment")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("TeamLeader")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EntryControlPointId");
-
-                    b.ToTable("BaTeams");
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.BaWearer", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<double>("CylinderPressureBar")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTimeOffset>("EnteredAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("ExitedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("TeamId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("WhistleAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TeamId");
-
-                    b.ToTable("BaWearers");
-                });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.CommandOperator", b =>
                 {
@@ -814,9 +718,6 @@ namespace MusterHubCommand.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("BaEntryControlEnabled")
-                        .HasColumnType("boolean");
-
                     b.Property<double>("GeofenceRadiusMeters")
                         .HasColumnType("double precision");
 
@@ -853,46 +754,6 @@ namespace MusterHubCommand.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("VehicleProfiles");
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.BaEntryControlPoint", b =>
-                {
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.Incident", "Incident")
-                        .WithMany("BaEntryControlPoints")
-                        .HasForeignKey("IncidentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.Device", "OwningDevice")
-                        .WithMany()
-                        .HasForeignKey("OwningDeviceId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Incident");
-
-                    b.Navigation("OwningDevice");
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.BaTeam", b =>
-                {
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.BaEntryControlPoint", "EntryControlPoint")
-                        .WithMany("Teams")
-                        .HasForeignKey("EntryControlPointId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("EntryControlPoint");
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.BaWearer", b =>
-                {
-                    b.HasOne("MusterHubCommand.Api.Data.Entities.BaTeam", "Team")
-                        .WithMany("Wearers")
-                        .HasForeignKey("TeamId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.CommandOperator", b =>
@@ -1143,16 +1004,6 @@ namespace MusterHubCommand.Api.Migrations
                     b.Navigation("AllowedParentType");
                 });
 
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.BaEntryControlPoint", b =>
-                {
-                    b.Navigation("Teams");
-                });
-
-            modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.BaTeam", b =>
-                {
-                    b.Navigation("Wearers");
-                });
-
             modelBuilder.Entity("MusterHubCommand.Api.Data.Entities.Incident", b =>
                 {
                     b.Navigation("Actions");
@@ -1160,8 +1011,6 @@ namespace MusterHubCommand.Api.Migrations
                     b.Navigation("Appliances");
 
                     b.Navigation("Attachments");
-
-                    b.Navigation("BaEntryControlPoints");
 
                     b.Navigation("Objectives");
 

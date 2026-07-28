@@ -6,6 +6,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:MusterHubCommandTablet.ViewModels"
     xmlns:models="clr-namespace:MusterHubCommandTablet.Models"
+    xmlns:views="clr-namespace:MusterHubCommandTablet.Views"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     x:DataType="vm:IncidentDetailViewModel"
     Shell.NavBarIsVisible="False"
@@ -122,8 +123,13 @@
                 </DataTrigger>
             </Grid.Triggers>
 
-            <!-- Tab strip -->
-            <HorizontalStackLayout Grid.Row="0" Spacing="24">
+            <!-- Tab strip. Horizontally scrollable, not just a plain
+                 HorizontalStackLayout: six tabs (plus BA Entry Control
+                 when an org has it on) no longer reliably fits the
+                 column's width, and this is cheaper than redesigning the
+                 strip itself before that's actually proven necessary. -->
+            <ScrollView Grid.Row="0" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+            <HorizontalStackLayout Spacing="24">
                 <Label Text="Overview" FontAttributes="Bold" FontSize="16" VerticalOptions="Center">
                     <Label.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding SelectTabCommand}" CommandParameter="Overview" />
@@ -139,6 +145,12 @@
                             <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                         </DataTrigger>
                         <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
+                            <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Risks">
+                            <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Ba">
                             <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                         </DataTrigger>
                     </Label.Triggers>
@@ -160,6 +172,12 @@
                                 <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                             </DataTrigger>
                             <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Risks">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Ba">
                                 <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                             </DataTrigger>
                         </Label.Triggers>
@@ -192,6 +210,12 @@
                             <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
                                 <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                             </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Risks">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Ba">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
                         </Label.Triggers>
                     </Label>
                     <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{StaticResource Gray400}">
@@ -222,6 +246,12 @@
                             <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
                                 <Setter Property="TextColor" Value="{StaticResource Gray400}" />
                             </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Risks">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Ba">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
                         </Label.Triggers>
                     </Label>
                     <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{StaticResource StatusHazard}">
@@ -233,7 +263,80 @@
                         </Border.Triggers>
                     </Border>
                 </HorizontalStackLayout>
+
+                <HorizontalStackLayout Spacing="4">
+                    <Label Text="Risk Log" FontAttributes="Bold" FontSize="16" VerticalOptions="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SelectTabCommand}" CommandParameter="Risks" />
+                        </Label.GestureRecognizers>
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Risks">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Objectives">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Ba">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                    <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{StaticResource StatusHazard}">
+                        <Label Text="{Binding IdentifiedRisksCount}" Style="{StaticResource StatusPillLabel}" FontSize="12" />
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding IdentifiedRisksCount}" Value="0">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                    </Border>
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout Spacing="4" IsVisible="{Binding BaEntryControlEnabled}">
+                    <Label Text="BA Entry Control" FontAttributes="Bold" FontSize="16" VerticalOptions="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SelectTabCommand}" CommandParameter="Ba" />
+                        </Label.GestureRecognizers>
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Ba">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Overview">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Objectives">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Tasks">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Timeline">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding SelectedTab}" Value="Risks">
+                                <Setter Property="TextColor" Value="{StaticResource Gray400}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                    <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{StaticResource StatusHazard}">
+                        <Label Text="{Binding InBaCount}" Style="{StaticResource StatusPillLabel}" FontSize="12" />
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding InBaCount}" Value="0">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                    </Border>
+                </HorizontalStackLayout>
             </HorizontalStackLayout>
+            </ScrollView>
 
             <!-- Overview tab: Attendance -->
             <ScrollView Grid.Row="1" IsVisible="{Binding IsOverviewSelected}">
@@ -445,8 +548,22 @@
 
                         <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingAction}">
                             <HorizontalStackLayout Spacing="8">
-                                <Button Text="Task" Command="{Binding SetActionKindCommand}" CommandParameter="Task" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
-                                <Button Text="Resource Request" Command="{Binding SetActionKindCommand}" CommandParameter="ResourceRequest" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                                <Button Text="Task" Command="{Binding SetActionKindCommand}" CommandParameter="Task" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding ActionKind}" Value="Task">
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Resource Request" Command="{Binding SetActionKindCommand}" CommandParameter="ResourceRequest" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding ActionKind}" Value="ResourceRequest">
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
                             </HorizontalStackLayout>
                             <Entry Placeholder="What's needed?" Text="{Binding ActionText}" MaxLength="500" />
                             <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalOptions="End">
@@ -546,6 +663,499 @@
                     </VerticalStackLayout>
                 </Grid>
             </Border>
+
+            <!-- Risk Log tab. Unlike Objectives, raising a risk DOES land a
+                 Hazard entry in the Timeline (see the API's own
+                 IncidentService.RaiseRiskAsync): only Control/Reopen stay
+                 out of it. No PersonPicker/sector here either, since a risk
+                 belongs to the incident as a whole. -->
+            <ScrollView Grid.Row="1" IsVisible="{Binding IsRisksSelected}">
+            <VerticalStackLayout Spacing="16">
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" Text="Risk Log" Style="{StaticResource CardTitleLabel}" FontSize="18" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="+ Add" Command="{Binding ToggleAddingRiskCommand}" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                        </Grid>
+                        <Label Text="No risks identified yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Risks, Converter={StaticResource CollectionEmptyConverter}}" />
+
+                        <CollectionView ItemsSource="{Binding Risks}" SelectionMode="None">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:IncidentRiskDto">
+                                    <Border Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="0,0,0,0" Padding="0,10">
+                                        <VerticalStackLayout Spacing="4">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <VerticalStackLayout Grid.Column="0" Spacing="1">
+                                                    <Label Text="{Binding RiskLevel, StringFormat='{0} risk'}" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" TextColor="{Binding RiskLevel, Converter={StaticResource StatusToColorConverter}}" />
+                                                    <Label Text="{Binding Description}" FontSize="15" />
+                                                    <Label Text="{Binding ControlMeasure, StringFormat='Control measure: {0}'}" IsVisible="{Binding ControlMeasure, Converter={StaticResource StringNotEmptyToBoolConverter}}" Style="{StaticResource CaptionLabel}" />
+                                                    <Label Text="{Binding RaisedByName, StringFormat='Raised by {0}'}" Style="{StaticResource CaptionLabel}" />
+                                                </VerticalStackLayout>
+                                                <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}" VerticalOptions="Start">
+                                                    <Label Text="{Binding Status}" Style="{StaticResource StatusPillLabel}" FontSize="13" />
+                                                </Border>
+                                            </Grid>
+                                            <HorizontalStackLayout Spacing="12">
+                                                <Button
+                                                    Text="Mark controlled"
+                                                    Command="{Binding BindingContext.ControlRiskCommand, Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    FontSize="13" Padding="10,4" HeightRequest="30">
+                                                    <Button.Triggers>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Controlled">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                    </Button.Triggers>
+                                                </Button>
+                                                <Button
+                                                    Text="Reopen"
+                                                    Command="{Binding BindingContext.ReopenRiskCommand, Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding Id}"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    FontSize="13" Padding="10,4" HeightRequest="30">
+                                                    <Button.Triggers>
+                                                        <DataTrigger TargetType="Button" Binding="{Binding Status}" Value="Identified">
+                                                            <Setter Property="IsVisible" Value="False" />
+                                                        </DataTrigger>
+                                                    </Button.Triggers>
+                                                </Button>
+                                            </HorizontalStackLayout>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingRisk}">
+                            <Entry Placeholder="What's the hazard?" Text="{Binding RiskDescription}" MaxLength="500" />
+                            <HorizontalStackLayout Spacing="8">
+                                <Button Text="Low" Command="{Binding SetRiskLevelCommand}" CommandParameter="Low" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding RiskLevel}" Value="Low">
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Medium" Command="{Binding SetRiskLevelCommand}" CommandParameter="Medium" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding RiskLevel}" Value="Medium">
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="High" Command="{Binding SetRiskLevelCommand}" CommandParameter="High" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding RiskLevel}" Value="High">
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                            </HorizontalStackLayout>
+                            <Entry Placeholder="Control measure (optional)" Text="{Binding RiskControlMeasure}" MaxLength="500" />
+                            <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalOptions="End">
+                                <Button Grid.Column="0" Text="Cancel" Command="{Binding ToggleAddingRiskCommand}" Style="{StaticResource SecondaryButton}" />
+                                <Button Grid.Column="1" Text="Add" Command="{Binding RaiseRiskCommand}" IsEnabled="{Binding IsRaisingRisk, Converter={StaticResource InvertedBoolConverter}}" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+            </ScrollView>
+
+            <!-- BA Entry Control tab, only ever shown when the tab strip
+                 itself is (BaEntryControlEnabled), same org-gating check.
+                 A device owns at most one point at a time (see
+                 OwnedBaPoint's own comment), so this never renders a *list*
+                 of points: just this device's own one (if any), or a
+                 short list of still-unclaimed ones to pick up. That keeps
+                 real nesting to a single level (Teams, then each team's own
+                 Wearers) instead of the three-deep Points > Teams > Wearers
+                 structure this used to be, which is also what was silently
+                 corrupting Grid layouts two BindableLayout/CollectionView
+                 levels deep: huge grey collapsed boxes with content
+                 crushed into a corner. Teams uses CollectionView (matches
+                 every other tab's own list styling); Wearers, nested inside
+                 each team, stays BindableLayout and avoids Grid columns,
+                 since that's the one level that's still genuinely two lists deep. -->
+            <ScrollView Grid.Row="1" IsVisible="{Binding IsBaSelected}">
+            <VerticalStackLayout Spacing="16">
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" Text="BA Entry Control" Style="{StaticResource CardTitleLabel}" VerticalOptions="Center" />
+                            <Button
+                                Grid.Column="1" Text="+ Point"
+                                Command="{Binding ToggleAddingBaPointCommand}"
+                                Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30"
+                                IsVisible="{Binding HasOwnedBaPoint, Converter={StaticResource InvertedBoolConverter}}" />
+                        </Grid>
+
+                        <VerticalStackLayout Spacing="10" IsVisible="{Binding IsAddingBaPoint}">
+                            <Entry Placeholder="Point name (e.g. Alpha)" Text="{Binding BaPointName}" MaxLength="100" />
+                            <HorizontalStackLayout Spacing="8">
+                                <Button Text="Stage I" Command="{Binding SetBaPointStageCommand}" CommandParameter="I" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding BaPointStage}" Value="I">
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Stage II" Command="{Binding SetBaPointStageCommand}" CommandParameter="II" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding BaPointStage}" Value="II">
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Stage III" Command="{Binding SetBaPointStageCommand}" CommandParameter="III" Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding BaPointStage}" Value="III">
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource Primary}}" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                            </HorizontalStackLayout>
+                            <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalOptions="End">
+                                <Button Grid.Column="0" Text="Cancel" Command="{Binding ToggleAddingBaPointCommand}" Style="{StaticResource SecondaryButton}" />
+                                <Button Grid.Column="1" Text="Add" Command="{Binding RaiseBaPointCommand}" IsEnabled="{Binding IsRaisingBaPoint, Converter={StaticResource InvertedBoolConverter}}" />
+                            </Grid>
+                        </VerticalStackLayout>
+
+                        <!-- No point of our own yet: either point someone at
+                             what's still unclaimed, or the plain empty state. -->
+                        <VerticalStackLayout Spacing="12" IsVisible="{Binding HasOwnedBaPoint, Converter={StaticResource InvertedBoolConverter}}">
+                            <Label
+                                Text="No entry control point set up on this device yet."
+                                Style="{StaticResource CardSubtitleLabel}"
+                                IsVisible="{Binding IsAddingBaPoint, Converter={StaticResource InvertedBoolConverter}}" />
+
+                            <VerticalStackLayout Spacing="8" IsVisible="{Binding HasUnclaimedBaPoints}">
+                                <Label Text="UNCLAIMED POINTS" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" CharacterSpacing="0.6" />
+                                <VerticalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding UnclaimedBaPoints}">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate x:DataType="models:BaEntryControlPointDto">
+                                            <Border Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" StrokeThickness="1" StrokeShape="RoundRectangle 10" Padding="12,10">
+                                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                                    <Label Grid.Column="0" Text="{Binding Name}" FontAttributes="Bold" FontSize="15" VerticalOptions="Center" />
+                                                    <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" BackgroundColor="{StaticResource Gray400}" VerticalOptions="Center">
+                                                        <Label Text="{Binding Stage, StringFormat='Stage {0}'}" Style="{StaticResource StatusPillLabel}" FontSize="12" />
+                                                    </Border>
+                                                    <Button
+                                                        Grid.Column="2" Text="Claim"
+                                                        Command="{Binding BindingContext.ClaimBaPointCommand, Source={x:Reference PageRoot}}"
+                                                        CommandParameter="{Binding Id}"
+                                                        FontSize="13" Padding="10,4" HeightRequest="30" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <!-- This device's own point: the whole rest of the
+                             tab, not a loop, since there's only ever one.
+                             IsVisible has to live on this outer wrapper, not
+                             the one below that rebinds BindingContext to
+                             OwnedBaPoint itself, since HasOwnedBaPoint is a
+                             ViewModel property, not a BaEntryControlPointDto
+                             one, so it has to resolve before that rebind. -->
+                        <VerticalStackLayout IsVisible="{Binding HasOwnedBaPoint}">
+                        <VerticalStackLayout Spacing="14" BindingContext="{Binding OwnedBaPoint}" x:DataType="models:BaEntryControlPointDto">
+                            <!-- A board has a title strip, not just another
+                                 card: fixed dark fill regardless of theme,
+                                 the one deliberately "always dark" surface
+                                 on this tab, same idea as a real whiteboard
+                                 header. Stage is severity-coded (I calmest,
+                                 III deepest/most committed) so it reads at a
+                                 glance, not just as a label. -->
+                            <Border BackgroundColor="{StaticResource Secondary}" StrokeThickness="0" StrokeShape="RoundRectangle 10" Padding="16,12">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                                    <Label Grid.Column="0" Text="{Binding Name, StringFormat='Entry Control Point {0}'}" FontAttributes="Bold" FontSize="18" TextColor="White" VerticalOptions="Center" />
+                                    <Border Grid.Column="1" Style="{StaticResource StatusPillBorder}" VerticalOptions="Center">
+                                        <Border.Triggers>
+                                            <DataTrigger TargetType="Border" Binding="{Binding Stage}" Value="I">
+                                                <Setter Property="BackgroundColor" Value="{StaticResource StatusMobilised}" />
+                                            </DataTrigger>
+                                            <DataTrigger TargetType="Border" Binding="{Binding Stage}" Value="II">
+                                                <Setter Property="BackgroundColor" Value="{StaticResource StatusOpen}" />
+                                            </DataTrigger>
+                                            <DataTrigger TargetType="Border" Binding="{Binding Stage}" Value="III">
+                                                <Setter Property="BackgroundColor" Value="{StaticResource StatusHazard}" />
+                                            </DataTrigger>
+                                        </Border.Triggers>
+                                        <Label Text="{Binding Stage, StringFormat='Stage {0}'}" Style="{StaticResource StatusPillLabel}" FontSize="13" />
+                                    </Border>
+                                    <Button
+                                        Grid.Column="2" Text="Hand over"
+                                        Command="{Binding BindingContext.HandOverBaPointCommand, Source={x:Reference PageRoot}}"
+                                        CommandParameter="{Binding Id}"
+                                        BackgroundColor="Transparent" TextColor="White" BorderColor="White" BorderWidth="1"
+                                        FontSize="13" Padding="10,4" HeightRequest="30" CornerRadius="10" />
+                                </Grid>
+                            </Border>
+
+                            <!-- Dashboard strip: the "do I need to act before
+                                 I even open a team" glance, so an ECO doesn't
+                                 have to scroll every team to find out. -->
+                            <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="24">
+                                <VerticalStackLayout Grid.Column="0" Spacing="0">
+                                    <Label Text="IN BA" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" CharacterSpacing="0.6" />
+                                    <Label Text="{Binding BindingContext.InBaCount, Source={x:Reference PageRoot}}" FontSize="22" FontAttributes="Bold" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1" Spacing="0">
+                                    <Label Text="OVERDUE" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" CharacterSpacing="0.6" />
+                                    <Label Text="{Binding BindingContext.OverdueBaCount, Source={x:Reference PageRoot}}" FontSize="22" FontAttributes="Bold" TextColor="{StaticResource StatusHazard}">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label" Binding="{Binding BindingContext.OverdueBaCount, Source={x:Reference PageRoot}}" Value="0">
+                                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="2" Spacing="0" HorizontalOptions="End" IsVisible="{Binding BindingContext.NextDueOutDisplay, Source={x:Reference PageRoot}, Converter={StaticResource StringNotEmptyToBoolConverter}}">
+                                    <Label Text="NEXT DUE OUT" Style="{StaticResource CaptionLabel}" FontAttributes="Bold" CharacterSpacing="0.6" HorizontalOptions="End" />
+                                    <Label Text="{Binding BindingContext.NextDueOutDisplay, Source={x:Reference PageRoot}}" FontSize="14" FontAttributes="Bold" HorizontalOptions="End" />
+                                </VerticalStackLayout>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0" Text="Teams" Style="{StaticResource CardSubtitleLabel}" FontAttributes="Bold" VerticalOptions="Center" />
+                                <Button
+                                    Grid.Column="1" Text="+ Team"
+                                    Command="{Binding BindingContext.ToggleAddingBaTeamCommand, Source={x:Reference PageRoot}}"
+                                    Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" />
+                            </Grid>
+
+                            <VerticalStackLayout Spacing="10" IsVisible="{Binding BindingContext.IsAddingBaTeam, Source={x:Reference PageRoot}}">
+                                <Entry Placeholder="Team name (e.g. Alpha 1)" Text="{Binding BindingContext.BaTeamName, Source={x:Reference PageRoot}}" MaxLength="100" />
+                                <Entry Placeholder="Team leader" Text="{Binding BindingContext.BaTeamLeader, Source={x:Reference PageRoot}}" MaxLength="100" />
+                                <Entry Placeholder="Comms channel (optional)" Text="{Binding BindingContext.BaTeamCommsChannel, Source={x:Reference PageRoot}}" MaxLength="100" />
+                                <Entry Placeholder="Briefing (optional)" Text="{Binding BindingContext.BaTeamBriefing, Source={x:Reference PageRoot}}" MaxLength="500" />
+                                <Entry Placeholder="Equipment (optional)" Text="{Binding BindingContext.BaTeamEquipment, Source={x:Reference PageRoot}}" MaxLength="500" />
+                                <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalOptions="End">
+                                    <Button Grid.Column="0" Text="Cancel" Command="{Binding BindingContext.ToggleAddingBaTeamCommand, Source={x:Reference PageRoot}}" Style="{StaticResource SecondaryButton}" />
+                                    <Button
+                                        Grid.Column="1" Text="Add"
+                                        Command="{Binding BindingContext.RaiseBaTeamCommand, Source={x:Reference PageRoot}}"
+                                        IsEnabled="{Binding BindingContext.IsRaisingBaTeam, Source={x:Reference PageRoot}, Converter={StaticResource InvertedBoolConverter}}" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <Label Text="No teams committed yet." Style="{StaticResource CardSubtitleLabel}" IsVisible="{Binding Teams, Converter={StaticResource CollectionEmptyConverter}}" />
+
+                            <!-- One flat list for both Teams and each team's own Wearers:
+                                 see BaDisplayRow's own comment for why this isn't two
+                                 nested lists (a real MAUI layout-corruption bug on this
+                                 version). BaDisplayRowTemplateSelector, not one shared
+                                 template with IsVisible toggles: a cell only ever holds
+                                 the one panel its Kind actually needs, which is also what
+                                 fixed the leftover grey dead-space the toggle approach
+                                 still had (a recycled cell not re-measuring down). A team
+                                 and its wearers still read as one group despite the flat
+                                 list, via the indent and connecting rule on everything but
+                                 the header. -->
+                            <CollectionView ItemsSource="{Binding BindingContext.BaTeamRows, Source={x:Reference PageRoot}}" SelectionMode="None">
+                                <CollectionView.ItemTemplate>
+                                    <views:BaDisplayRowTemplateSelector>
+
+                                        <views:BaDisplayRowTemplateSelector.TeamHeaderTemplate>
+                                            <DataTemplate x:DataType="vm:BaDisplayRow">
+                                                <!-- Colour-coded left accent bar (clipped to the
+                                                     card's own rounded corner via a zero-padding
+                                                     outer Border, the project's usual technique
+                                                     for a rounded colour area) is what shows a
+                                                     team and its wearers below belong together.
+                                                     Chevron collapses/expands this team's own
+                                                     wearer rows (BaTeamRows drops them entirely
+                                                     when collapsed, same ExpandGlyphConverter
+                                                     already used for the incident hierarchy tree),
+                                                     the one thing that actually saves space; the
+                                                     header itself, and its own status/countdown,
+                                                     stays visible either way. -->
+                                                <Border Style="{StaticResource CardBorder}" Margin="0,10,0,0" Padding="0">
+                                                    <Grid ColumnDefinitions="5,*">
+                                                        <BoxView Grid.Column="0" Color="{StaticResource Secondary}" />
+                                                        <Grid Grid.Column="1" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10" Padding="14">
+                                                            <Label
+                                                                Grid.Column="0"
+                                                                Text="{Binding IsExpanded, Converter={StaticResource ExpandGlyphConverter}}"
+                                                                FontSize="14" WidthRequest="18" HorizontalTextAlignment="Center" VerticalOptions="Start">
+                                                                <Label.GestureRecognizers>
+                                                                    <TapGestureRecognizer
+                                                                        Command="{Binding BindingContext.ToggleBaTeamExpandedCommand, Source={x:Reference PageRoot}}"
+                                                                        CommandParameter="{Binding Team.Id}" />
+                                                                </Label.GestureRecognizers>
+                                                            </Label>
+                                                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                                                <Label Text="{Binding Team.Name}" FontAttributes="Bold" FontSize="16" />
+                                                                <VerticalStackLayout Spacing="2" IsVisible="{Binding IsExpanded}">
+                                                                    <Label Text="{Binding Team.TeamLeader, StringFormat='Team leader {0}'}" Style="{StaticResource CaptionLabel}" />
+                                                                    <Label Text="{Binding Team.CommsChannel, StringFormat='Comms: {0}'}" Style="{StaticResource CaptionLabel}" IsVisible="{Binding Team.CommsChannel, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                                                                    <Label Text="{Binding Team.Briefing, StringFormat='Briefing: {0}'}" Style="{StaticResource CaptionLabel}" IsVisible="{Binding Team.Briefing, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                                                                    <Label Text="{Binding Team.Equipment, StringFormat='Equipment: {0}'}" Style="{StaticResource CaptionLabel}" IsVisible="{Binding Team.Equipment, Converter={StaticResource StringNotEmptyToBoolConverter}}" />
+                                                                </VerticalStackLayout>
+                                                            </VerticalStackLayout>
+                                                            <!-- "3 in BA" / "Overdue" / "All out" plus
+                                                                 this team's own earliest whistle time
+                                                                 counting down, so both survive a
+                                                                 collapse; an ECO shouldn't have to
+                                                                 expand a team just to see whether
+                                                                 anyone in it is close to due out. -->
+                                                            <VerticalStackLayout Grid.Column="2" Spacing="2" HorizontalOptions="End">
+                                                                <Border Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Urgency, Converter={StaticResource StatusToColorConverter}}" HorizontalOptions="End" IsVisible="{Binding TeamStatusText, Converter={StaticResource StringNotEmptyToBoolConverter}}">
+                                                                    <Label Text="{Binding TeamStatusText}" Style="{StaticResource StatusPillLabel}" FontSize="12" />
+                                                                </Border>
+                                                                <Label Text="{Binding CountdownDisplay}" FontSize="13" FontAttributes="Bold" HorizontalOptions="End" IsVisible="{Binding CountdownDisplay, Converter={StaticResource StringNotEmptyToBoolConverter}}">
+                                                                    <Label.Triggers>
+                                                                        <DataTrigger TargetType="Label" Binding="{Binding Urgency}" Value="Warning">
+                                                                            <Setter Property="TextColor" Value="{StaticResource StatusOpen}" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger TargetType="Label" Binding="{Binding Urgency}" Value="Overdue">
+                                                                            <Setter Property="TextColor" Value="{StaticResource StatusHazard}" />
+                                                                        </DataTrigger>
+                                                                    </Label.Triggers>
+                                                                </Label>
+                                                            </VerticalStackLayout>
+                                                            <Button
+                                                                Grid.Column="3"
+                                                                Text="+ Wearer"
+                                                                Command="{Binding BindingContext.ToggleAddingBaWearerCommand, Source={x:Reference PageRoot}}"
+                                                                CommandParameter="{Binding Team.Id}"
+                                                                Style="{StaticResource SecondaryButton}" FontSize="13" Padding="10,4" HeightRequest="30" VerticalOptions="Start" />
+                                                        </Grid>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </views:BaDisplayRowTemplateSelector.TeamHeaderTemplate>
+
+                                        <views:BaDisplayRowTemplateSelector.AddWearerFormTemplate>
+                                            <DataTemplate x:DataType="vm:BaDisplayRow">
+                                                <VerticalStackLayout Spacing="8" Margin="24,8,0,0">
+                                                    <Entry Placeholder="Wearer name (e.g. FF Beard)" Text="{Binding BindingContext.BaWearerName, Source={x:Reference PageRoot}}" MaxLength="200" />
+                                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                                        <Entry Grid.Column="0" Placeholder="Cylinder pressure (bar)" Text="{Binding BindingContext.BaWearerCylinderPressureBar, Source={x:Reference PageRoot}}" Keyboard="Numeric" />
+                                                        <Entry Grid.Column="1" Placeholder="Whistle in (minutes)" Text="{Binding BindingContext.BaWearerWhistleMinutes, Source={x:Reference PageRoot}}" Keyboard="Numeric" />
+                                                    </Grid>
+                                                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalOptions="End">
+                                                        <Button
+                                                            Grid.Column="0" Text="Cancel"
+                                                            Command="{Binding BindingContext.ToggleAddingBaWearerCommand, Source={x:Reference PageRoot}}"
+                                                            CommandParameter="{Binding Team.Id}"
+                                                            Style="{StaticResource SecondaryButton}" />
+                                                        <Button
+                                                            Grid.Column="1" Text="Add"
+                                                            Command="{Binding BindingContext.RaiseBaWearerCommand, Source={x:Reference PageRoot}}"
+                                                            CommandParameter="{Binding Team.Id}"
+                                                            IsEnabled="{Binding BindingContext.IsRaisingBaWearer, Source={x:Reference PageRoot}, Converter={StaticResource InvertedBoolConverter}}" />
+                                                    </Grid>
+                                                </VerticalStackLayout>
+                                            </DataTemplate>
+                                        </views:BaDisplayRowTemplateSelector.AddWearerFormTemplate>
+
+                                        <views:BaDisplayRowTemplateSelector.NoWearersTemplate>
+                                            <DataTemplate x:DataType="vm:BaDisplayRow">
+                                                <Label Text="No wearers yet." Style="{StaticResource CaptionLabel}" Margin="24,8,0,0" />
+                                            </DataTemplate>
+                                        </views:BaDisplayRowTemplateSelector.NoWearersTemplate>
+
+                                        <views:BaDisplayRowTemplateSelector.WearerTemplate>
+                                            <DataTemplate x:DataType="vm:BaDisplayRow">
+                                                <!-- Urgency-coloured left accent (Normal/Warning/
+                                                     Overdue/Exited) doubles as the team-grouping
+                                                     rule the plain wearer row used to draw in
+                                                     Secondary: one bar now carries both jobs. The
+                                                     live countdown is the single largest, boldest
+                                                     number on the row on purpose: it's the one
+                                                     thing an ECO actually needs at a glance, not a
+                                                     value buried in a sentence. -->
+                                                <Border Style="{StaticResource CardBorder}" Margin="24,6,0,0" Padding="0">
+                                                    <Grid ColumnDefinitions="5,*">
+                                                        <BoxView Grid.Column="0">
+                                                            <BoxView.Triggers>
+                                                                <DataTrigger TargetType="BoxView" Binding="{Binding Urgency}" Value="Normal">
+                                                                    <Setter Property="Color" Value="{StaticResource StatusMobilised}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="BoxView" Binding="{Binding Urgency}" Value="Warning">
+                                                                    <Setter Property="Color" Value="{StaticResource StatusOpen}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="BoxView" Binding="{Binding Urgency}" Value="Overdue">
+                                                                    <Setter Property="Color" Value="{StaticResource StatusHazard}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="BoxView" Binding="{Binding Urgency}" Value="Exited">
+                                                                    <Setter Property="Color" Value="{StaticResource StatusOnScene}" />
+                                                                </DataTrigger>
+                                                            </BoxView.Triggers>
+                                                        </BoxView>
+                                                        <VerticalStackLayout Grid.Column="1" Spacing="6" Padding="12,10">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <Label Grid.Column="0" Text="{Binding Wearer.Name}" FontAttributes="Bold" FontSize="16" VerticalOptions="Center" />
+                                                                <Label Grid.Column="1" Text="{Binding CountdownDisplay}" FontSize="24" FontAttributes="Bold" VerticalOptions="Center">
+                                                                    <Label.Triggers>
+                                                                        <DataTrigger TargetType="Label" Binding="{Binding Urgency}" Value="Warning">
+                                                                            <Setter Property="TextColor" Value="{StaticResource StatusOpen}" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger TargetType="Label" Binding="{Binding Urgency}" Value="Overdue">
+                                                                            <Setter Property="TextColor" Value="{StaticResource StatusHazard}" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger TargetType="Label" Binding="{Binding Urgency}" Value="Exited">
+                                                                            <Setter Property="TextColor" Value="{StaticResource StatusOnScene}" />
+                                                                            <Setter Property="FontSize" Value="14" />
+                                                                        </DataTrigger>
+                                                                    </Label.Triggers>
+                                                                </Label>
+                                                            </Grid>
+                                                            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="16">
+                                                                <Border Grid.Column="0" Style="{StaticResource StatusPillBorder}" BackgroundColor="{Binding Wearer.Status, Converter={StaticResource StatusToColorConverter}}" VerticalOptions="Center">
+                                                                    <Label Text="{Binding Wearer.Status}" Style="{StaticResource StatusPillLabel}" FontSize="12" />
+                                                                </Border>
+                                                                <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
+                                                                    <Label Text="PRESSURE" Style="{StaticResource CaptionLabel}" FontSize="10" CharacterSpacing="0.4" />
+                                                                    <Label Text="{Binding Wearer.CylinderPressureBar, StringFormat='{0} bar'}" FontSize="13" FontAttributes="Bold" />
+                                                                </VerticalStackLayout>
+                                                                <VerticalStackLayout Grid.Column="2" Spacing="0" VerticalOptions="Center">
+                                                                    <Label Text="ENTERED" Style="{StaticResource CaptionLabel}" FontSize="10" CharacterSpacing="0.4" />
+                                                                    <Label Text="{Binding Wearer.EnteredAtUtc, StringFormat='{0:t}'}" FontSize="13" FontAttributes="Bold" />
+                                                                </VerticalStackLayout>
+                                                                <VerticalStackLayout Grid.Column="3" Spacing="0" VerticalOptions="Center">
+                                                                    <Label Text="WHISTLE" Style="{StaticResource CaptionLabel}" FontSize="10" CharacterSpacing="0.4" />
+                                                                    <Label Text="{Binding Wearer.WhistleAtUtc, StringFormat='{0:t}'}" FontSize="13" FontAttributes="Bold" />
+                                                                </VerticalStackLayout>
+                                                                <Button
+                                                                    Grid.Column="5" Text="Exit BA"
+                                                                    Command="{Binding BindingContext.ExitBaWearerCommand, Source={x:Reference PageRoot}}"
+                                                                    CommandParameter="{Binding Wearer.Id}"
+                                                                    Style="{StaticResource SecondaryButton}"
+                                                                    FontSize="12" Padding="8,2" HeightRequest="26" VerticalOptions="Center">
+                                                                    <Button.Triggers>
+                                                                        <DataTrigger TargetType="Button" Binding="{Binding Wearer.Status}" Value="Exited">
+                                                                            <Setter Property="IsVisible" Value="False" />
+                                                                        </DataTrigger>
+                                                                    </Button.Triggers>
+                                                                </Button>
+                                                            </Grid>
+                                                        </VerticalStackLayout>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </views:BaDisplayRowTemplateSelector.WearerTemplate>
+
+                                    </views:BaDisplayRowTemplateSelector>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+            </ScrollView>
         </Grid>
     </Grid>
 </ContentPage>

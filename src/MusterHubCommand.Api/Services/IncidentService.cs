@@ -1,7 +1,9 @@
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using MusterHubCommand.Api.Contracts;
 using MusterHubCommand.Api.Data;
 using MusterHubCommand.Api.Data.Entities;
+using MusterHubCommand.Api.Hubs;
 
 namespace MusterHubCommand.Api.Services;
 
@@ -16,8 +18,19 @@ public class IncidentValidationException(string message) : Exception(message);
 // off ICurrentOrganisationAccessor, since IntegrationIncidentsController is
 // [AllowAnonymous] -- there is no ambient organisation until the caller's
 // API key has already resolved one.
-public class IncidentService(ApplicationDbContext db, CoreNotificationService notificationService)
+public class IncidentService(ApplicationDbContext db, CoreNotificationService notificationService, IHubContext<IncidentHub> hubContext)
 {
+    // Single chokepoint for the SignalR "something changed" nudge -- every
+    // mutating method below calls this right after SaveChangesAsync,
+    // instead of each controller action doing it individually. Sends only
+    // an id, never a duplicated DTO -- see IncidentHub's own comment. Both
+    // groups get it: the org-wide one for the incidents list, the
+    // incident-specific one for anyone with that detail page open.
+    private Task NotifyIncidentChangedAsync(Guid organisationId, Guid incidentId, CancellationToken ct = default) =>
+        Task.WhenAll(
+            hubContext.Clients.Group(IncidentHub.OrgGroup(organisationId)).SendAsync("IncidentUpdated", incidentId, ct),
+            hubContext.Clients.Group(IncidentHub.IncidentGroup(incidentId)).SendAsync("IncidentUpdated", incidentId, ct));
+
     public Task<Incident?> FindByExternalReferenceAsync(Guid organisationId, string externalReference, CancellationToken ct = default) =>
         Query(organisationId).FirstOrDefaultAsync(i => i.ExternalReference == externalReference, ct);
 
@@ -39,6 +52,8 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             .Include(i => i.CloseType)
             .Include(i => i.Sectors).ThenInclude(s => s.PersonInChargeEmployee)
             .Include(i => i.Objectives)
+            .Include(i => i.Risks)
+            .Include(i => i.BaEntryControlPoints).ThenInclude(p => p.Teams).ThenInclude(t => t.Wearers)
             .Include(i => i.Actions).ThenInclude(a => a.AssignedToEmployee)
             .Include(i => i.Attachments).ThenInclude(a => a.UploadedByEmployee)
             .Include(i => i.Attachments).ThenInclude(a => a.UploadedByDevice)
@@ -61,6 +76,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             if (request.StartedAtUtc is { } started) existing.StartedAtUtc = started;
             existing.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, existing.Id, ct);
             existing.OrgUnit = await LoadOrgUnitAsync(stationId, ct);
             return existing;
         }
@@ -79,6 +95,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         };
         db.Incidents.Add(incident);
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incident.Id, ct);
         incident.OrgUnit = await LoadOrgUnitAsync(stationId, ct);
 
         // Only ever fires for a genuinely new incident, never the upsert-
@@ -113,6 +130,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         }
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         if (request.StationCode is not null) incident.OrgUnit = await LoadOrgUnitAsync(incident.OrgUnitId, ct);
         return incident;
     }
@@ -136,6 +154,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         incident.CloseOutcome = request.Outcome;
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         if (request.CloseTypeId is not null) await db.Entry(incident).Reference(i => i.CloseType).LoadAsync(ct);
         return incident;
     }
@@ -151,6 +170,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         incident.ClosedAtUtc ??= DateTimeOffset.UtcNow;
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -213,6 +233,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
 
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -256,6 +277,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         }
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -299,6 +321,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         db.IncidentSectors.Add(sector);
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -337,6 +360,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             : await db.Employees.FindAsync([personInChargeEmployeeId], ct);
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -380,6 +404,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
 
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -415,6 +440,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         appliance.UpdatedAtUtc = DateTimeOffset.UtcNow;
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -430,6 +456,34 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         appliance.UpdatedAtUtc = DateTimeOffset.UtcNow;
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        return incident;
+    }
+
+    // ID-keyed, unlike SetSingleApplianceStatusAsync's own callsign-keyed
+    // self-report (used by the tablet's own "Start navigation" and geofence
+    // flows) -- this is the control room picking a specific appliance row
+    // to change inline, same shape as SetApplianceResourceKindAsync/
+    // AssignApplianceSectorAsync right above. Still only logs a Timeline
+    // entry on a genuine transition, same guard SetSingleApplianceStatusAsync
+    // already applies.
+    public async Task<Incident?> SetApplianceStatusAsync(Guid organisationId, Guid incidentId, Guid applianceId, ApplianceStatus status, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var appliance = incident.Appliances.FirstOrDefault(a => a.Id == applianceId);
+        if (appliance is null) return incident;
+
+        if (appliance.Status != status)
+        {
+            appliance.Status = status;
+            appliance.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            QueueResourceChangeUpdate(incident, IncidentUpdateSource.ControlRoom, $"{appliance.Callsign} {status}");
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        }
         return incident;
     }
 
@@ -455,6 +509,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         appliance.UpdatedAtUtc = DateTimeOffset.UtcNow;
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -536,6 +591,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
 
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -556,6 +612,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             QueueActionChangeUpdate(incident, action.Source, $"{action.Text}: acknowledged by {acknowledgedByName}");
             incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         }
         return incident;
     }
@@ -583,6 +640,255 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             QueueActionChangeUpdate(incident, action.Source, $"{action.Text}: {status.ToString().ToLowerInvariant()} by {resolvedByName}");
             incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        }
+        return incident;
+    }
+
+    // Same shape as QueueResourceChangeUpdate/QueueActionChangeUpdate -- a
+    // newly-identified risk becomes a real Timeline entry (it's a genuine
+    // event worth broadcasting), reusing the existing Hazard type rather
+    // than adding a new one: Hazard is already acknowledgeable and already
+    // renders with its own red dot/"HAZARD" caption in the web timeline, so
+    // a risk-log entry gets that treatment for free. Only raising a risk
+    // does this -- ControlRiskAsync/ReopenRiskAsync deliberately don't, see
+    // their own comments, same reasoning as Objectives' Achieve/Reopen.
+    private void QueueRiskRaisedUpdate(Incident incident, IncidentUpdateSource source, string text)
+    {
+        db.IncidentUpdates.Add(new IncidentUpdate
+        {
+            IncidentId = incident.Id,
+            Source = source,
+            Text = text,
+            UpdateType = IncidentUpdateType.Hazard,
+        });
+    }
+
+    public async Task<Incident?> RaiseRiskAsync(
+        Guid organisationId, Guid incidentId, string description, IncidentRiskLevel riskLevel, string? controlMeasure,
+        IncidentUpdateSource source, string raisedByName, Guid? raisedByEmployeeId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        // Not also added to incident.Risks -- same EF change-tracker fixup
+        // gotcha as RaiseObjectiveAsync/RaiseActionAsync.
+        db.IncidentRisks.Add(new IncidentRisk
+        {
+            IncidentId = incident.Id,
+            Description = description,
+            RiskLevel = riskLevel,
+            ControlMeasure = controlMeasure,
+            Source = source,
+            RaisedByName = raisedByName,
+            RaisedByEmployeeId = raisedByEmployeeId,
+        });
+        QueueRiskRaisedUpdate(incident, source, $"Risk identified ({riskLevel}): {description}");
+
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        return incident;
+    }
+
+    // Idempotent, same "two tablets racing the same ~15s poll" reasoning as
+    // AchieveObjectiveAsync. Deliberately no Timeline write here -- the
+    // ongoing Identified->Controlled state lives in the Risk Log tab
+    // itself, same reasoning Objectives already established for its own
+    // Achieve.
+    public async Task<Incident?> ControlRiskAsync(Guid organisationId, Guid incidentId, Guid riskId, string reviewedByName, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var risk = incident.Risks.FirstOrDefault(r => r.Id == riskId);
+        if (risk is null) return incident;
+
+        if (risk.Status != IncidentRiskStatus.Controlled)
+        {
+            risk.Status = IncidentRiskStatus.Controlled;
+            risk.ReviewedAtUtc = DateTimeOffset.UtcNow;
+            risk.ReviewedByName = reviewedByName;
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        }
+        return incident;
+    }
+
+    // Same idempotency shape as ControlRiskAsync, the other direction.
+    // Clears ReviewedAtUtc/ReviewedByName rather than leaving the prior
+    // reviewer's stamp -- if this gets controlled again later that's a
+    // fresh review, not a continuation of the old one. Same reasoning as
+    // ReopenObjectiveAsync.
+    public async Task<Incident?> ReopenRiskAsync(Guid organisationId, Guid incidentId, Guid riskId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var risk = incident.Risks.FirstOrDefault(r => r.Id == riskId);
+        if (risk is null) return incident;
+
+        if (risk.Status != IncidentRiskStatus.Identified)
+        {
+            risk.Status = IncidentRiskStatus.Identified;
+            risk.ReviewedAtUtc = null;
+            risk.ReviewedByName = null;
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        }
+        return incident;
+    }
+
+    // No QueueXChangeUpdate anywhere in these four -- same reasoning as
+    // Objectives/Risks' own ongoing-state changes, a BA board is its own
+    // place, not another Timeline feed. Org-gating (BaEntryControlEnabled)
+    // happens at the controller, not here -- these methods don't need to
+    // know why they were or weren't allowed to be called. Tablet-only by
+    // convention (also enforced at the controller): the ECO is physically
+    // at the point, not a remote control-room operator, so the web console
+    // only ever reads this data, never writes it.
+    // deviceId becomes the point's OwningDeviceId -- a tablet is physically
+    // at one entry control point, not several, so the caller (see
+    // TabletIncidentsController.AddBaEntryControlPoint) has already
+    // rejected this if the device owns one already.
+    public async Task<Incident?> AddBaEntryControlPointAsync(
+        Guid organisationId, Guid incidentId, string name, BaStage stage, Guid deviceId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        // Not also added to incident.BaEntryControlPoints -- same EF
+        // change-tracker fixup gotcha as every other RaiseXAsync/AddXAsync
+        // in this file.
+        db.BaEntryControlPoints.Add(new BaEntryControlPoint { IncidentId = incident.Id, Name = name, Stage = stage, OwningDeviceId = deviceId });
+
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        return incident;
+    }
+
+    // Idempotent, same "two tablets racing the same poll" reasoning as
+    // every other resolve-style method here. Only takes if the point is
+    // currently unclaimed -- claiming one another device already owns, or
+    // re-claiming one this device already owns, is a silent no-op rather
+    // than an error.
+    public async Task<Incident?> ClaimBaEntryControlPointAsync(
+        Guid organisationId, Guid incidentId, Guid pointId, Guid deviceId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var point = incident.BaEntryControlPoints.FirstOrDefault(p => p.Id == pointId);
+        if (point is null) return incident;
+
+        if (point.OwningDeviceId is null)
+        {
+            point.OwningDeviceId = deviceId;
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        }
+        return incident;
+    }
+
+    // Only the owning device can release its own point -- a no-op if this
+    // device doesn't currently own it (including if it's already
+    // unclaimed).
+    public async Task<Incident?> HandOverBaEntryControlPointAsync(
+        Guid organisationId, Guid incidentId, Guid pointId, Guid deviceId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var point = incident.BaEntryControlPoints.FirstOrDefault(p => p.Id == pointId);
+        if (point is null) return incident;
+
+        if (point.OwningDeviceId == deviceId)
+        {
+            point.OwningDeviceId = null;
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        }
+        return incident;
+    }
+
+    public async Task<Incident?> AddBaTeamAsync(
+        Guid organisationId, Guid incidentId, Guid pointId, string name, string teamLeader,
+        string? commsChannel, string? briefing, string? equipment, Guid deviceId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var point = incident.BaEntryControlPoints.FirstOrDefault(p => p.Id == pointId);
+        if (point is null || point.OwningDeviceId != deviceId) return incident;
+
+        db.BaTeams.Add(new BaTeam
+        {
+            EntryControlPointId = point.Id,
+            Name = name,
+            TeamLeader = teamLeader,
+            CommsChannel = commsChannel,
+            Briefing = briefing,
+            Equipment = equipment,
+        });
+
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        return incident;
+    }
+
+    // whistleMinutes, not a caller-supplied WhistleAtUtc -- resolved
+    // against this server's own clock (like EnteredAtUtc's default
+    // already is), not a tablet's, which isn't trustworthy enough to
+    // compute a timestamp that gets persisted.
+    public async Task<Incident?> AddBaWearerAsync(
+        Guid organisationId, Guid incidentId, Guid teamId, string name, double cylinderPressureBar, int whistleMinutes,
+        Guid deviceId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var point = incident.BaEntryControlPoints.FirstOrDefault(p => p.Teams.Any(t => t.Id == teamId));
+        var team = point?.Teams.FirstOrDefault(t => t.Id == teamId);
+        if (team is null || point!.OwningDeviceId != deviceId) return incident;
+
+        db.BaWearers.Add(new BaWearer
+        {
+            TeamId = team.Id,
+            Name = name,
+            CylinderPressureBar = cylinderPressureBar,
+            WhistleAtUtc = DateTimeOffset.UtcNow.AddMinutes(whistleMinutes),
+        });
+
+        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
+        return incident;
+    }
+
+    // Idempotent, same "two tablets racing the same poll" reasoning as
+    // every other resolve-style method here -- but one-way, no Reopen: once
+    // exited, that wearer's record is done (see BaWearer's own comment).
+    public async Task<Incident?> ExitBaWearerAsync(Guid organisationId, Guid incidentId, Guid wearerId, Guid deviceId, CancellationToken ct = default)
+    {
+        var incident = await Query(organisationId).FirstOrDefaultAsync(i => i.Id == incidentId, ct);
+        if (incident is null) return null;
+
+        var point = incident.BaEntryControlPoints.FirstOrDefault(p => p.Teams.Any(t => t.Wearers.Any(w => w.Id == wearerId)));
+        var wearer = point?.Teams.SelectMany(t => t.Wearers).FirstOrDefault(w => w.Id == wearerId);
+        if (wearer is null || point!.OwningDeviceId != deviceId) return incident;
+
+        if (wearer.ExitedAtUtc is null)
+        {
+            wearer.ExitedAtUtc = DateTimeOffset.UtcNow;
+            incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         }
         return incident;
     }
@@ -613,6 +919,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
 
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         return incident;
     }
 
@@ -636,6 +943,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             objective.AchievedByName = achievedByName;
             incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         }
         return incident;
     }
@@ -659,6 +967,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             objective.AchievedByName = null;
             incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         }
         return incident;
     }
@@ -687,6 +996,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
         });
         incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         await db.Entry(incident).Collection(i => i.Updates).LoadAsync(ct);
         return incident;
     }
@@ -708,6 +1018,7 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             update.AcknowledgedAtUtc = DateTimeOffset.UtcNow;
             update.AcknowledgedByName = acknowledgedByName;
             await db.SaveChangesAsync(ct);
+            await NotifyIncidentChangedAsync(organisationId, incidentId, ct);
         }
         return incident;
     }

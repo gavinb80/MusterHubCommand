@@ -97,6 +97,70 @@ export interface IncidentObjectiveDto {
   createdAtUtc: string;
 }
 
+export type IncidentRiskLevel = "Low" | "Medium" | "High";
+export type IncidentRiskStatus = "Identified" | "Controlled";
+
+// raisedByName/reviewedByName follow the same server-resolved-only rule as
+// IncidentObjectiveDto. Unlike an objective, raising a risk also lands a
+// Hazard entry in the Timeline.
+export interface IncidentRiskDto {
+  id: string;
+  description: string;
+  riskLevel: IncidentRiskLevel;
+  controlMeasure: string | null;
+  status: IncidentRiskStatus;
+  source: IncidentUpdateSource;
+  raisedByName: string;
+  raisedByEmployeeId: string | null;
+  reviewedAtUtc: string | null;
+  reviewedByName: string | null;
+  createdAtUtc: string;
+}
+
+// Status isn't stored -- Overdue is computed server-side at read time from
+// exitedAtUtc/whistleAtUtc vs now, so it's always correct against the
+// clock rather than needing a background job.
+export type BaWearerStatus = "InBa" | "Exited" | "Overdue";
+
+// The three BA Operating Procedures stages, per National Operational
+// Guidance -- I: entry control on the appliance/bridgehead with no
+// guideline; II: a guideline used; III: main and emergency lines.
+export type BaStage = "I" | "II" | "III";
+
+// Read-only from the web console's own point of view -- the ECO is
+// physically at the entry control point with a tablet, so every write for
+// a BA board lives there, not here. The web console only ever displays
+// this (see IncidentDto.baEntryControlPoints), for oversight.
+export interface BaWearerDto {
+  id: string;
+  name: string;
+  cylinderPressureBar: number;
+  enteredAtUtc: string;
+  whistleAtUtc: string;
+  exitedAtUtc: string | null;
+  status: BaWearerStatus;
+}
+
+export interface BaTeamDto {
+  id: string;
+  name: string;
+  teamLeader: string;
+  commsChannel: string | null;
+  briefing: string | null;
+  equipment: string | null;
+  wearers: BaWearerDto[];
+}
+
+export interface BaEntryControlPointDto {
+  id: string;
+  name: string;
+  stage: BaStage;
+  // Always false here -- device ownership only means something to the
+  // tablet that's scoped by it; the web console sees every point.
+  isOwnedByThisDevice: boolean;
+  teams: BaTeamDto[];
+}
+
 // assignedToName/raisedByName are always the display name -- resolved
 // server-side the same way IncidentSectorDto.personInChargeName is.
 export interface IncidentActionDto {
@@ -140,8 +204,14 @@ export interface IncidentDto {
   updates: IncidentUpdateDto[];
   sectors: IncidentSectorDto[];
   objectives: IncidentObjectiveDto[];
+  risks: IncidentRiskDto[];
   actions: IncidentActionDto[];
+  baEntryControlPoints: BaEntryControlPointDto[];
   attachments: IncidentAttachmentDto[];
+  // The server's own clock at response time -- the tablet uses this to
+  // correct BA Entry Control's live countdowns against its own (not
+  // fully trustworthy) clock. Unused here, but part of the real payload.
+  serverNowUtc: string;
 }
 
 export interface IncidentCloseTypeDto {
@@ -213,6 +283,18 @@ export interface AcknowledgeUpdateRequest {
 export interface AddObjectiveRequest {
   text: string;
 }
+
+// Same trust model as AddObjectiveRequest -- controlMeasure is optional at
+// raise time, can be filled in once a plan's actually in place.
+export interface AddRiskRequest {
+  description: string;
+  riskLevel: IncidentRiskLevel;
+  controlMeasure?: string | null;
+}
+
+// No AddBaEntryRequest here -- BA Entry Control is a tablet-only write
+// surface (see the API's own TabletIncidentsController comment), the web
+// console only ever reads BaEntryControlPointDto.
 
 // Kind isn't direction-locked -- see the API's own AddActionRequest comment.
 export interface AddActionRequest {
@@ -310,6 +392,7 @@ export interface RouteResponseDto {
 
 export interface OrganisationSettingsDto {
   geofenceRadiusMeters: number;
+  baEntryControlEnabled: boolean;
 }
 
 export interface GeocodeResponseDto {

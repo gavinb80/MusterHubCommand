@@ -19,6 +19,7 @@ public class TabletOrganisationSettingsController(ApplicationDbContext db) : Dev
     {
         var settings = await db.OrganisationSettings.IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.OrganisationId == OrganisationId);
-        return Ok(new OrganisationSettingsDto(settings?.GeofenceRadiusMeters ?? DefaultGeofenceRadiusMeters));
+        return Ok(new OrganisationSettingsDto(
+            settings?.GeofenceRadiusMeters ?? DefaultGeofenceRadiusMeters, settings?.BaEntryControlEnabled ?? false));
     }
 }

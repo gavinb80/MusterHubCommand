@@ -8,6 +8,9 @@ import { IncidentMap, type AppliancePosition } from "./IncidentMap";
 import type { IncidentAttachmentDto } from "../api/types";
 
 const PEN_COLORS = ["#FF453A", "#FFD60A", "#0A84FF", "#111111"];
+const PEN_COLOR_NAMES: Record<string, string> = {
+  "#FF453A": "Red", "#FFD60A": "Yellow", "#0A84FF": "Blue", "#111111": "Black",
+};
 const PEN_WIDTHS = [3, 7];
 
 type Stroke = { color: string; width: number; points: { x: number; y: number }[] };
@@ -231,7 +234,9 @@ export function AnnotateMapModal({
                       <button
                         key={c}
                         type="button"
-                        title={c}
+                        title={PEN_COLOR_NAMES[c]}
+                        aria-label={`${PEN_COLOR_NAMES[c]} pen`}
+                        aria-pressed={color === c}
                         onClick={() => setColor(c)}
                         className={`h-6 w-6 rounded-full border-2 ${color === c ? "border-(--content-primary)" : "border-transparent"}`}
                         style={{ backgroundColor: c }}
@@ -243,6 +248,8 @@ export function AnnotateMapModal({
                       <button
                         key={w}
                         type="button"
+                        aria-label={`${w === PEN_WIDTHS[0] ? "Thin" : "Thick"} pen`}
+                        aria-pressed={width === w}
                         onClick={() => setWidth(w)}
                         className={`flex h-7 w-7 items-center justify-center rounded-lg border ${width === w ? "border-brand-primary" : "border-(--surface-border)"}`}
                       >

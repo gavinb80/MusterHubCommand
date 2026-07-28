@@ -21,6 +21,7 @@
             <converters:ExpandGlyphConverter x:Key="ExpandGlyphConverter" />
             <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
             <converters:CollectionEmptyConverter x:Key="CollectionEmptyConverter" />
+            <converters:GuidEqualsConverter x:Key="GuidEqualsConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
