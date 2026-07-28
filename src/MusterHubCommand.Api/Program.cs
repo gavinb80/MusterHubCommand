@@ -32,7 +32,7 @@ builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<OrgUnitPathInterceptor>();
 builder.Services.AddDbContext<ApplicationDbContext>((services, options) =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default"))
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default"), npgsql => npgsql.EnableRetryOnFailure())
         .AddInterceptors(services.GetRequiredService<OrgUnitPathInterceptor>()));
 
 builder.Services.AddScoped<ICurrentOrganisationAccessor, HttpContextCurrentOrganisationAccessor>();

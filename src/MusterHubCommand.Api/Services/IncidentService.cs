@@ -44,8 +44,19 @@ public class IncidentService(ApplicationDbContext db, CoreNotificationService no
             .OrderByDescending(i => i.StartedAtUtc)
             .ToListAsync(ct);
 
+    // AsSplitQuery -- without it, EF Core's default joins every one of
+    // these sibling collections into a single SQL statement, and the row
+    // count multiplies across all of them (appliances x updates x sectors
+    // x objectives x actions x attachments x ...). A load test against a
+    // real dev incident with 103 appliances, 36 updates, 4 sectors, 3
+    // actions and 8 attachments produced a single query over 350,000 rows
+    // and timed out outright -- on every GET, i.e. on every ~15s poll from
+    // every device. Split queries instead: one query per collection,
+    // joined only within its own ThenInclude chain, so the cost scales
+    // with the sum of the collections' sizes, not their product.
     private IQueryable<Incident> Query(Guid organisationId) =>
         db.Incidents.IgnoreQueryFilters()
+            .AsSplitQuery()
             .Include(i => i.Appliances).ThenInclude(a => a.OfficerInChargeEmployee)
             .Include(i => i.Updates)
             .Include(i => i.OrgUnit)
