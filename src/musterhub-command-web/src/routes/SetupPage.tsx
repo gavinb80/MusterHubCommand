@@ -341,7 +341,7 @@ function CloseTypesTab() {
         )}
         {closeTypesQuery.data?.map((t) => (
           <div key={t.id} className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-3">
-            <p className="text-body text-(--content-primary)"><span className="font-semibold">{t.code}</span> — {t.name}</p>
+            <p className="text-body text-(--content-primary)"><span className="font-semibold">{t.code}</span>: {t.name}</p>
             <button
               type="button"
               onClick={() => { if (confirm(`Delete "${t.code} - ${t.name}"?`)) deleteMutation.mutate(t.id); }}

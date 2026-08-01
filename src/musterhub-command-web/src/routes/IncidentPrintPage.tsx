@@ -153,13 +153,13 @@ export function IncidentPrintPage() {
         <div key={group.sector?.id ?? "unassigned"} className="mt-3">
           <h3 className="text-caption font-semibold uppercase tracking-wide text-(--content-secondary)">
             {group.sector?.name ?? "Unassigned"}
-            {group.sector?.personInChargeName && ` — Person in charge: ${group.sector.personInChargeName}`}
+            {group.sector?.personInChargeName && ` · Person in charge: ${group.sector.personInChargeName}`}
           </h3>
           <ul className="mt-1 flex flex-col gap-0.5">
             {group.appliances.map((a) => (
               <li key={a.id} className="text-body">
                 {a.callsign} &middot; {a.status} &middot; {a.resourceKind}
-                {a.officerInChargeName && ` — Officer: ${a.officerInChargeName}`}
+                {a.officerInChargeName && ` · Officer: ${a.officerInChargeName}`}
               </li>
             ))}
           </ul>
@@ -172,7 +172,7 @@ export function IncidentPrintPage() {
         {incident.actions.map((a) => (
           <li key={a.id} className="text-body">
             <span className="font-semibold">{ACTION_KIND_LABELS[a.kind] ?? a.kind}:</span> {a.text} &middot; {a.status}
-            {a.assignedToName && ` — Assigned to ${a.assignedToName}`}
+            {a.assignedToName && ` · Assigned to ${a.assignedToName}`}
           </li>
         ))}
       </ul>
@@ -181,12 +181,12 @@ export function IncidentPrintPage() {
       <ul className="mt-2 flex flex-col gap-2">
         <li className="text-body">
           <span className="text-caption text-(--content-secondary)">{new Date(incident.startedAtUtc).toLocaleString()}</span>
-          {" — "}Incident created: {incident.incidentType}
+          {" · "}Incident created: {incident.incidentType}
         </li>
         {timeline.map((u) => (
           <li key={u.id} className="text-body">
             <span className="text-caption text-(--content-secondary)">{new Date(u.createdAtUtc).toLocaleString()}</span>
-            {" — "}
+            {" · "}
             <span className={u.updateType === "Hazard" ? "font-semibold" : undefined}>
               [{u.updateType === "Hazard" ? "HAZARD" : (u.authorName ?? u.source)}]
             </span>{" "}
@@ -201,7 +201,7 @@ export function IncidentPrintPage() {
         {incident.closedAtUtc && (
           <li className="text-body">
             <span className="text-caption text-(--content-secondary)">{new Date(incident.closedAtUtc).toLocaleString()}</span>
-            {" — "}Incident closed
+            {" · "}Incident closed
             {incident.closeTypeCode && ` (${incident.closeTypeCode} - ${incident.closeTypeName})`}
           </li>
         )}
