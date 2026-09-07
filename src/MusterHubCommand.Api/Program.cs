@@ -193,7 +193,8 @@ app.UseRateLimiter();
 
 // Same audited CSP as Rota/Skills -- a Vite-built SPA (script-src 'self',
 // no inline scripts), React's style={{}} needs style-src 'unsafe-inline',
-// Google Fonts is the only cross-origin fetch, everything else same-origin.
+// Google Fonts and the OSM tile subdomains (IncidentMap.tsx's Leaflet
+// layer) are the only cross-origin fetches, everything else same-origin.
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
@@ -208,7 +209,7 @@ app.Use(async (context, next) =>
         "default-src 'self'; " +
         "script-src 'self'; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-        "img-src 'self' data:; " +
+        "img-src 'self' data: https://*.tile.openstreetmap.org; " +
         "font-src 'self' https://fonts.gstatic.com; " +
         "connect-src 'self'; " +
         "object-src 'none'; " +
