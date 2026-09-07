@@ -24,6 +24,17 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
+
+		<!-- Dedicated release key, separate from MusterHubApp's, same reasoning
+		     as the separate bundle ID: a distinct product shouldn't share a
+		     single point of failure with the main app's signing key.
+		     Passwords come in via -p: at publish time, never committed,
+		     same pattern as MusterHubApp.csproj. -->
+		<AndroidKeyStore Condition="'$(Configuration)' == 'Release'">true</AndroidKeyStore>
+		<AndroidSigningKeyStore Condition="'$(Configuration)' == 'Release'">musterhubcommand.keystore</AndroidSigningKeyStore>
+		<AndroidSigningKeyAlias Condition="'$(Configuration)' == 'Release'">musterhubcommand</AndroidSigningKeyAlias>
+		<AndroidSigningKeyPass Condition="'$(Configuration)' == 'Release'">$(MusterHubCommandKeyPass)</AndroidSigningKeyPass>
+		<AndroidSigningStorePass Condition="'$(Configuration)' == 'Release'">$(MusterHubCommandStorePass)</AndroidSigningStorePass>
 	</PropertyGroup>
 
 	<ItemGroup>

@@ -6,6 +6,7 @@ obj/
 # Local-only secrets -- never commit real connection strings or keys here.
 appsettings.Development.json
 appsettings.Local.json
+*.keystore
 
 # Node / React
 node_modules/
