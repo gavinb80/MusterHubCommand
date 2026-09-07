@@ -17,7 +17,7 @@
 		     from the main MusterHub app, decoupled deliberately (see the
 		     architecture plan's "tablet's auth model" section). -->
 		<ApplicationTitle>MusterHub Command</ApplicationTitle>
-		<ApplicationId>com.gavinbeard.musterhubcommand</ApplicationId>
+		<ApplicationId>app.musterhub.command</ApplicationId>
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
 		<ApplicationVersion>1</ApplicationVersion>
 
