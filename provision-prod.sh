@@ -32,6 +32,27 @@ echo "==> Database (musterhubcommand on $PG)..."
 az postgres flexible-server db create --resource-group $RG --server-name $PG --name musterhubcommand -o none
 echo "    ready"
 
+echo "==> Granting the app's DB role rights on its new database..."
+# Creating a database does NOT grant anything to the role the app's own
+# connection string uses (musterhubskillsadmin, cloned from Skills below) --
+# without these, migrate-prod.sh fails outright (permission denied for
+# schema public) and, if that's somehow worked around, the app crash-loops
+# on every startup instead: Hangfire.PostgreSql needs database-level CREATE
+# to provision its own "hangfire" schema on first run, and without it you
+# get an opaque "site failed to start" from Azure with the real reason
+# buried in `az webapp log startup show`.
+ADMIN_PASS=$(az keyvault secret show --vault-name $VAULT --name pg-admin-password --query value -o tsv)
+PGPASSWORD="$ADMIN_PASS" psql "host=$PG.postgres.database.azure.com dbname=musterhubcommand user=musterhubadmin sslmode=require" -v ON_ERROR_STOP=1 -q -c '
+  GRANT ALL PRIVILEGES ON SCHEMA public TO musterhubskillsadmin;
+  GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO musterhubskillsadmin;
+  GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO musterhubskillsadmin;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO musterhubskillsadmin;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO musterhubskillsadmin;
+  GRANT CREATE ON DATABASE musterhubcommand TO musterhubskillsadmin;
+  CREATE EXTENSION IF NOT EXISTS ltree;
+'
+echo "    ready"
+
 echo "==> App Service ($APP on $PLAN)..."
 az webapp create -g $RG -p $PLAN -n $APP --runtime "DOTNETCORE:10.0" -o none
 echo "    ready"
