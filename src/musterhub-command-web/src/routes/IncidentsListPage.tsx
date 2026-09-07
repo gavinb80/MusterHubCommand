@@ -239,6 +239,18 @@ export function IncidentsListPage() {
       </div>
 
       {incidentsQuery.isLoading && <p className="text-body text-(--content-secondary)">Loading...</p>}
+      {incidentsQuery.isError && (
+        <div className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
+          <p className="text-body text-(--content-secondary)">Couldn't load incidents. Check your connection.</p>
+          <button
+            type="button"
+            onClick={() => incidentsQuery.refetch()}
+            className="rounded-lg border border-(--surface-border) px-3 py-1.5 text-body font-semibold text-(--content-primary)"
+          >
+            Try again
+          </button>
+        </div>
+      )}
       {incidentsQuery.data?.length === 0 && (
         <p className="text-body text-(--content-secondary)">
           {activeOnly ? "No active incidents." : "No incidents yet."}

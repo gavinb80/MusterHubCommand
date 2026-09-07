@@ -1681,6 +1681,20 @@ export function IncidentDetailPage() {
   const [route, setRoute] = useState<{ routePoints: [number, number][] | null }>({ routePoints: null });
 
   if (incidentQuery.isLoading) return <p className="text-body text-(--content-secondary)">Loading...</p>;
+  if (incidentQuery.isError) {
+    return (
+      <div className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-4 shadow-card">
+        <p className="text-body text-(--content-secondary)">Couldn't load this incident. Check your connection.</p>
+        <button
+          type="button"
+          onClick={() => incidentQuery.refetch()}
+          className="rounded-lg border border-(--surface-border) px-3 py-1.5 text-body font-semibold text-(--content-primary)"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
   const incident = incidentQuery.data;
   if (!incident) return <p className="text-body text-(--content-secondary)">Incident not found.</p>;
 
