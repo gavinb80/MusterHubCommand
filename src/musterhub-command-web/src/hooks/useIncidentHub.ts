@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import * as signalR from "@microsoft/signalr";
 import { useQueryClient } from "@tanstack/react-query";
 import { getStoredToken } from "../auth/tokenStore";
@@ -17,7 +17,6 @@ import { getStoredToken } from "../auth/tokenStore";
 export function useIncidentHub(organisationId: string | undefined, incidentId?: string) {
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
-  const connectionRef = useRef<signalR.HubConnection | null>(null);
 
   useEffect(() => {
     if (!organisationId) return;
@@ -26,7 +25,6 @@ export function useIncidentHub(organisationId: string | undefined, incidentId?: 
       .withUrl("/hubs/incidents", { accessTokenFactory: () => getStoredToken() ?? "" })
       .withAutomaticReconnect()
       .build();
-    connectionRef.current = connection;
 
     connection.on("IncidentUpdated", (updatedIncidentId: string) => {
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
@@ -49,7 +47,6 @@ export function useIncidentHub(organisationId: string | undefined, incidentId?: 
     return () => {
       if (incidentId) connection.invoke("LeaveIncident", incidentId).catch(() => {});
       connection.stop();
-      connectionRef.current = null;
     };
   }, [organisationId, incidentId, queryClient]);
 
