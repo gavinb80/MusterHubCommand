@@ -646,9 +646,16 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
         refreshTimer ??= Application.Current!.Dispatcher.CreateTimer();
         refreshTimer.Interval = TimeSpan.FromSeconds(15);
-        refreshTimer.Tick += async (_, _) => await RefreshAsync();
+        // Shell navigation to a sibling screen and back re-enters this same
+        // VM instance rather than a fresh one, so OnAppearingAsync can run
+        // more than once per instance -- unsubscribe first so repeat visits
+        // don't stack up duplicate Tick handlers on the same timer.
+        refreshTimer.Tick -= OnRefreshTimerTick;
+        refreshTimer.Tick += OnRefreshTimerTick;
         refreshTimer.Start();
     }
+
+    private async void OnRefreshTimerTick(object? sender, EventArgs e) => await RefreshAsync();
 
     private async Task LoadGeofenceRadiusAsync()
     {
@@ -669,6 +676,7 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     public void OnDisappearing()
     {
+        if (refreshTimer is not null) refreshTimer.Tick -= OnRefreshTimerTick;
         refreshTimer?.Stop();
         StopCountdownTimer();
     }
@@ -1456,7 +1464,11 @@ public partial class IncidentDetailViewModel : BaseViewModel, IDisposable
 
     public void Dispose()
     {
-        if (refreshTimer is not null) refreshTimer.Stop();
+        if (refreshTimer is not null)
+        {
+            refreshTimer.Tick -= OnRefreshTimerTick;
+            refreshTimer.Stop();
+        }
         StopCountdownTimer();
         GC.SuppressFinalize(this);
     }
