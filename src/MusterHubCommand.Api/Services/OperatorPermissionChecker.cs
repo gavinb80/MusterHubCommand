@@ -32,4 +32,38 @@ public class OperatorPermissionChecker(ApplicationDbContext db)
 
     public async Task<bool> IsIncidentCommanderAsync(Guid employeeId, CancellationToken cancellationToken = default) =>
         await GetTierAsync(employeeId, cancellationToken) == CommandOperatorTier.IncidentCommander;
+
+    // Closes the bootstrap window deliberately rather than leaving it open
+    // until whoever happens to visit Setup first claims it. Mirrors Rota
+    // and Skills' own EnsureModuleAdminGrantedAsync: core's designated
+    // module admin (the "Command" tickbox on the user's own admin page,
+    // arriving here as the JWT's multi-valued module_admin claim) gets
+    // Incident Commander -- Command's top tier -- the moment they first
+    // sign in, whether or not the org has already bootstrapped, as long as
+    // they don't already hold some operator grant of their own.
+    public async Task EnsureModuleAdminGrantedAsync(
+        Guid organisationId, Guid employeeId, bool isDesignatedModuleAdmin, CancellationToken cancellationToken = default)
+    {
+        if (!isDesignatedModuleAdmin) return;
+
+        var isBootstrapping = await IsBootstrappingAsync(cancellationToken);
+        if (!isBootstrapping && await IsOperatorAsync(employeeId, cancellationToken)) return;
+
+        var existing = await db.CommandOperators.FirstOrDefaultAsync(o => o.EmployeeId == employeeId, cancellationToken);
+        if (existing is null)
+        {
+            db.CommandOperators.Add(new CommandOperator
+            {
+                OrganisationId = organisationId,
+                EmployeeId = employeeId,
+                Tier = CommandOperatorTier.IncidentCommander,
+            });
+        }
+        else
+        {
+            existing.Tier = CommandOperatorTier.IncidentCommander;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
 }

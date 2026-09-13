@@ -53,7 +53,14 @@ echo "==> Building web app..."
 ( cd "$WEB_DIR" && npm run build --silent )
 
 echo "==> Publishing API..."
-dotnet publish "$API_PROJECT" -c Release -o "$PUBLISH_DIR" --nologo -v quiet
+# Self-contained: while net11 is on a preview SDK, Azure App Service's
+# built-in DOTNETCORE|11.0 image tracks its own preview patch (observed
+# preview.6) independently of whatever preview build we compile with
+# locally, and roll-forward can't resolve a request for a newer preview
+# against an older one on the box. Bundling the runtime removes that
+# dependency entirely. Revisit once net11 reaches GA and the image and
+# SDK versions stop drifting.
+dotnet publish "$API_PROJECT" -c Release -o "$PUBLISH_DIR" --nologo -v quiet -r linux-x64 --self-contained true
 
 echo "==> Bundling web app into API's wwwroot..."
 mkdir -p "$PUBLISH_DIR/wwwroot"

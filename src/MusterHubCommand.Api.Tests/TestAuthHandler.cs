@@ -25,6 +25,7 @@ public class TestAuthHandler(
     public const string OrgIdHeader = "X-Test-Org-Id";
     public const string PersonIdHeader = "X-Test-Person-Id";
     public const string NoEntitlementHeader = "X-Test-No-Entitlement";
+    public const string ModuleAdminHeader = "X-Test-Module-Admin";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -42,6 +43,12 @@ public class TestAuthHandler(
         // hasn't bought the module.
         if (!Request.Headers.ContainsKey(NoEntitlementHeader))
             claims.Add(new Claim("entitlements", "command"));
+
+        // Mirrors core's module_admin claim (see MusterHub.Api's
+        // UserModuleAdmin / Admin Users Edit page) -- set when a test wants
+        // to prove EnsureModuleAdminGrantedAsync's auto-provisioning.
+        if (Request.Headers.ContainsKey(ModuleAdminHeader))
+            claims.Add(new Claim("module_admin", "command"));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);

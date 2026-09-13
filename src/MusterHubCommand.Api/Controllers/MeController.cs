@@ -25,6 +25,18 @@ public class MeController(
     public async Task<IActionResult> Get()
     {
         var employeeId = await CurrentEmployeeIdAsync();
+
+        // Runs before the operator/tier lookups below so a freshly-designated
+        // module admin's very first request already reflects the grant it
+        // just made, rather than reporting isBootstrapping=true for one
+        // extra round trip. See EnsureModuleAdminGrantedAsync for why this
+        // is the mechanism that closes the bootstrap window for a real org.
+        if (employeeId is not null)
+        {
+            var isDesignatedModuleAdmin = User.HasClaim(c => c.Type == "module_admin" && c.Value == "command");
+            await operatorChecker.EnsureModuleAdminGrantedAsync(OrganisationId, employeeId.Value, isDesignatedModuleAdmin);
+        }
+
         var displayName = employeeId is null
             ? null
             : await db.Employees.Where(e => e.Id == employeeId).Select(e => e.DisplayName).FirstOrDefaultAsync();
