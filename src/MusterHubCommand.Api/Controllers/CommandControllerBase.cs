@@ -40,8 +40,8 @@ public abstract class CommandControllerBase(
     }
 
     // Same idiom, for actions elevated above baseline operator access
-    // (closing/cancelling incidents, sector/hierarchy CRUD, granting
-    // operators) -- see CommandOperatorTier.
+    // (cancelling incidents, sector/hierarchy CRUD, granting operators) --
+    // see CommandOperatorTier.
     protected async Task<ActionResult?> RequireIncidentCommanderAsync()
     {
         if (await operatorChecker.IsBootstrappingAsync()) return null;

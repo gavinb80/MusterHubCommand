@@ -5,8 +5,8 @@ namespace MusterHubCommand.Api.Data.Entities;
 // CommandSupport are named distinctly (different real-world positions --
 // Fire Control desk staff vs. on-scene admin/logging support for the IC)
 // even though they carry the same baseline permission today, and
-// IncidentCommander is the one elevated tier: close/cancel incidents,
-// manage sectors/hierarchy, grant/revoke operators. Building a composable
+// IncidentCommander is the one elevated tier: cancel incidents, manage
+// sectors/hierarchy, grant/revoke operators. Building a composable
 // N-tier permission-code system for three fixed, named tiers is exactly
 // the kind of abstraction CLAUDE.md's own guidance says not to reach for
 // ahead of a real need for more. Row presence still means "is an operator

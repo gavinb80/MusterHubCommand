@@ -1638,6 +1638,9 @@ export function IncidentDetailPage() {
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
   const canManageIncident = meQuery.data?.isIncidentCommander ?? false;
+  // Close is baseline operator access (matches the API's RequireOperatorAsync
+  // gate on POST /close) -- Cancel stays Incident Commander-only below.
+  const canClose = meQuery.data?.isOperator ?? false;
 
   // Same cache key LocationPanel's own geofence query uses further down --
   // shares that result rather than firing a second request, just to gate
@@ -1732,7 +1735,7 @@ export function IncidentDetailPage() {
           >
             Export
           </Link>
-          {incident.status === "Open" && canManageIncident && (
+          {incident.status === "Open" && canClose && (
             <CloseIncidentModal incidentId={incident.id} />
           )}
           {incident.status === "Closed" && (

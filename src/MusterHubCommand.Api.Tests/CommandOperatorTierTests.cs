@@ -61,25 +61,25 @@ public class CommandOperatorTierTests(CommandApiFactory factory)
         Assert.Equal(HttpStatusCode.OK, allowedPatch.StatusCode);
     }
 
+    // Close used to be Incident Commander-only, same as Cancel above --
+    // deliberately opened up to the baseline tiers too (Control Room and
+    // Command Support both close/reopen incidents day to day; Cancel, for
+    // an incident raised in error, stays the elevated one).
     [Fact]
-    public async Task Closing_an_incident_via_the_generic_PATCH_requires_Incident_Commander()
+    public async Task Closing_an_incident_via_the_generic_PATCH_is_baseline_operator_access()
     {
         await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-CLOSE-1"));
         var incident = await GetByReferenceAsync("TIER-CLOSE-1");
 
-        var deniedForSupport = await _supportA.PatchAsJsonAsync($"/api/incidents/{incident.Id}",
+        var allowedForSupport = await _supportA.PatchAsJsonAsync($"/api/incidents/{incident.Id}",
             new UpdateIncidentRequest(null, null, null, null, null, null, IncidentStatus.Closed));
-        Assert.Equal(HttpStatusCode.Forbidden, deniedForSupport.StatusCode);
-
-        var allowedForCommander = await _commanderA.PatchAsJsonAsync($"/api/incidents/{incident.Id}",
-            new UpdateIncidentRequest(null, null, null, null, null, null, IncidentStatus.Closed));
-        Assert.Equal(HttpStatusCode.OK, allowedForCommander.StatusCode);
-        var after = (await allowedForCommander.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
+        Assert.Equal(HttpStatusCode.OK, allowedForSupport.StatusCode);
+        var after = (await allowedForSupport.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
         Assert.Equal(IncidentStatus.Closed, after.Status);
     }
 
     [Fact]
-    public async Task Closing_with_a_summary_requires_Incident_Commander_and_the_fields_persist()
+    public async Task Closing_with_a_summary_is_baseline_operator_access_and_the_fields_persist()
     {
         var closeTypeResponse = await _commanderA.PostAsJsonAsync("/api/incident-close-types",
             new SaveIncidentCloseTypeRequest("RTC.1", "Overturned vehicle"));
@@ -88,14 +88,10 @@ public class CommandOperatorTierTests(CommandApiFactory factory)
         await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-CLOSE-SUMMARY-1"));
         var incident = await GetByReferenceAsync("TIER-CLOSE-SUMMARY-1");
 
-        var deniedForSupport = await _supportA.PostAsJsonAsync($"/api/incidents/{incident.Id}/close",
+        var allowedForSupport = await _supportA.PostAsJsonAsync($"/api/incidents/{incident.Id}/close",
             new CloseIncidentRequest(closeType.Id, "Extricated casualty", "Casualty conveyed to hospital"));
-        Assert.Equal(HttpStatusCode.Forbidden, deniedForSupport.StatusCode);
-
-        var allowedForCommander = await _commanderA.PostAsJsonAsync($"/api/incidents/{incident.Id}/close",
-            new CloseIncidentRequest(closeType.Id, "Extricated casualty", "Casualty conveyed to hospital"));
-        Assert.Equal(HttpStatusCode.OK, allowedForCommander.StatusCode);
-        var after = (await allowedForCommander.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
+        Assert.Equal(HttpStatusCode.OK, allowedForSupport.StatusCode);
+        var after = (await allowedForSupport.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
         Assert.Equal(IncidentStatus.Closed, after.Status);
         Assert.NotNull(after.ClosedAtUtc);
         Assert.Equal(closeType.Id, after.CloseTypeId);
