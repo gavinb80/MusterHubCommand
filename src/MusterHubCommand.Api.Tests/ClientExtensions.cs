@@ -20,12 +20,13 @@ public static class ClientExtensions
     // per-request state, and separate clients keep a test's "as the
     // operator" and "as unassigned crew" calls from contaminating each
     // other.
-    public static HttpClient AsUser(this CommandApiFactory factory, Guid orgId, Guid? personId = null, bool entitled = true)
+    public static HttpClient AsUser(this CommandApiFactory factory, Guid orgId, Guid? personId = null, bool entitled = true, bool moduleAdmin = false)
     {
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.OrgIdHeader, orgId.ToString());
         if (personId is not null) client.DefaultRequestHeaders.Add(TestAuthHandler.PersonIdHeader, personId.Value.ToString());
         if (!entitled) client.DefaultRequestHeaders.Add(TestAuthHandler.NoEntitlementHeader, "1");
+        if (moduleAdmin) client.DefaultRequestHeaders.Add(TestAuthHandler.ModuleAdminHeader, "1");
         return client;
     }
 

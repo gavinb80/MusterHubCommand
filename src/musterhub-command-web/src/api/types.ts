@@ -421,3 +421,18 @@ export interface CreateIntegrationApiKeyResponse {
   label: string;
   apiKey: string;
 }
+
+export interface CoreDirectoryImportSummary {
+  serviceName: string;
+  unitsCreated: number;
+  unitsUpdated: number;
+  employeesCreated: number;
+  employeesUpdated: number;
+  stationMembershipsChanged: number;
+}
+
+export interface SyncConfigDto {
+  enabled: boolean;
+  lastSyncedAtUtc: string | null;
+  lastSyncNote: string | null;
+}

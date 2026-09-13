@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../auth/apiClient";
 import { useToast } from "../components/ToastProvider";
 import type {
-  CommandOperatorTier, CreateDeviceResponse, CreateIntegrationApiKeyResponse, DeviceDto, EmployeeDto,
-  IncidentCloseTypeDto, IntegrationApiKeyDto, MeResponse, OrganisationSettingsDto, OrgUnitDto,
-  SaveVehicleProfileRequest, VehicleProfileDto,
+  CommandOperatorTier, CoreDirectoryImportSummary, CreateDeviceResponse, CreateIntegrationApiKeyResponse, DeviceDto,
+  EmployeeDto, IncidentCloseTypeDto, IntegrationApiKeyDto, MeResponse, OrganisationSettingsDto, OrgUnitDto,
+  SaveVehicleProfileRequest, SyncConfigDto, VehicleProfileDto,
 } from "../api/types";
 
 const TABS = ["Stations", "Devices", "Vehicle profiles", "Close types", "Integration keys", "Operators", "General"] as const;
@@ -31,6 +31,11 @@ function StationsTab() {
         Mirrored from MusterHub's own directory -- synced nightly, or on demand from the core directory sync job.
         Vision pushes incidents against a station's code below.
       </p>
+      {stationsQuery.isSuccess && stations.length === 0 && (
+        <p className="text-body text-(--content-secondary)">
+          Nothing here yet. Run the import under General &rarr; Import from MusterHub to pull your stations in.
+        </p>
+      )}
       {stations.map((s) => (
         <div key={s.id} className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-3">
           <span className="text-body font-medium text-(--content-primary)">{s.name}</span>
@@ -461,6 +466,11 @@ function OperatorsTab() {
         granting/revoking operators.
         {!canManage && " Only an Incident Commander can change these."}
       </p>
+      {employeesQuery.isSuccess && employeesQuery.data.length === 0 && (
+        <p className="text-body text-(--content-secondary)">
+          No one to assign yet. Run the import under General &rarr; Import from MusterHub to pull your people in.
+        </p>
+      )}
       {employeesQuery.data?.map((e) => (
         <div key={e.id} className="flex items-center justify-between rounded-card border border-(--surface-border) bg-(--surface) p-3">
           <span className="text-body text-(--content-primary)">{e.displayName}</span>
@@ -480,6 +490,108 @@ function OperatorsTab() {
           </label>
         </div>
       ))}
+    </div>
+  );
+}
+
+function DirectorySyncSection() {
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const [apiKey, setApiKey] = useState("");
+  const [summary, setSummary] = useState<CoreDirectoryImportSummary | null>(null);
+
+  const syncConfigQuery = useQuery({
+    queryKey: ["core-sync-config"],
+    queryFn: () => apiFetch<SyncConfigDto>("/import/sync-config"),
+  });
+
+  const importMutation = useMutation({
+    mutationFn: () => apiFetch<CoreDirectoryImportSummary>("/import/core-directory", { method: "POST", body: JSON.stringify({ apiKey }) }),
+    onSuccess: (result) => {
+      setSummary(result);
+      setApiKey("");
+      queryClient.invalidateQueries();
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  // Saving the key runs an import right now too -- a bad key never sticks --
+  // then the nightly job takes over from here on.
+  const enableSyncMutation = useMutation({
+    mutationFn: () => apiFetch<CoreDirectoryImportSummary>("/import/sync-config", { method: "PUT", body: JSON.stringify({ apiKey }) }),
+    onSuccess: (result) => {
+      setSummary(result);
+      setApiKey("");
+      queryClient.invalidateQueries();
+    },
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const disableSyncMutation = useMutation({
+    mutationFn: () => apiFetch<void>("/import/sync-config", { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["core-sync-config"] }),
+    onError: (error) => showToast(error.message, "error"),
+  });
+
+  const sync = syncConfigQuery.data;
+  const busy = importMutation.isPending || enableSyncMutation.isPending;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-card border border-(--surface-border) bg-(--surface) p-3">
+      <p className="text-body font-semibold text-(--content-primary)">Import from MusterHub</p>
+      <p className="text-caption text-(--content-secondary)">
+        Pulls your service's stations and people straight from MusterHub, so nothing here needs retyping. Create
+        an API key with the Directory Export permission in MusterHub's admin portal (Integrations), paste it
+        below, and either run a one-off import or save it so the sync runs every night on its own.
+      </p>
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          importMutation.mutate();
+        }}
+      >
+        <input
+          type="password"
+          placeholder="MusterHub API key"
+          value={apiKey}
+          onChange={(ev) => setApiKey(ev.target.value)}
+          required
+          className="w-80 max-w-full rounded-lg border border-(--surface-border) px-3 py-2 text-body"
+        />
+        <button
+          type="submit"
+          disabled={busy}
+          className="rounded-lg bg-brand-primary px-4 py-2 text-body font-semibold text-white disabled:opacity-60"
+        >
+          {importMutation.isPending ? "Importing..." : "Run import"}
+        </button>
+        <button
+          type="button"
+          disabled={busy || !apiKey}
+          onClick={() => enableSyncMutation.mutate()}
+          className="rounded-lg border border-(--surface-border) px-4 py-2 text-body text-(--content-primary) disabled:opacity-60"
+        >
+          {enableSyncMutation.isPending ? "Saving..." : sync?.enabled ? "Update nightly sync key" : "Save and sync nightly"}
+        </button>
+      </form>
+      {sync?.enabled && (
+        <p className="text-caption text-(--content-primary)">
+          Nightly sync is on.
+          {sync.lastSyncedAtUtc && ` Last synced ${sync.lastSyncedAtUtc.slice(0, 10)} ${sync.lastSyncedAtUtc.slice(11, 16)}`}
+          {sync.lastSyncNote && ` (${sync.lastSyncNote})`}.{" "}
+          <button type="button" className="text-(--content-secondary) underline" onClick={() => disableSyncMutation.mutate()}>
+            Turn off and forget the key
+          </button>
+        </p>
+      )}
+      {summary && (
+        <p className="text-caption text-(--content-primary)">
+          Imported from <span className="font-semibold">{summary.serviceName}</span>: {summary.unitsCreated} stations
+          created, {summary.unitsUpdated} updated &middot; {summary.employeesCreated} people created,{" "}
+          {summary.employeesUpdated} updated &middot; {summary.stationMembershipsChanged} station links changed.
+        </p>
+      )}
     </div>
   );
 }
@@ -513,6 +625,7 @@ function GeneralTab() {
 
   return (
     <div className="flex flex-col gap-3">
+      <DirectorySyncSection />
       <p className="text-body text-(--content-secondary)">Org-wide defaults for the tablet app.</p>
       <form
         className="flex flex-col gap-3"
