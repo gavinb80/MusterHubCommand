@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MusterHubCommand.Api.Data.Entities;
 using MusterHubCommand.Api.Services;
 
 namespace MusterHubCommand.Api.Controllers;
@@ -40,8 +41,7 @@ public abstract class CommandControllerBase(
     }
 
     // Same idiom, for actions elevated above baseline operator access
-    // (closing/cancelling incidents, sector/hierarchy CRUD, granting
-    // operators) -- see CommandOperatorTier.
+    // (sector/hierarchy CRUD, granting operators) -- see CommandOperatorTier.
     protected async Task<ActionResult?> RequireIncidentCommanderAsync()
     {
         if (await operatorChecker.IsBootstrappingAsync()) return null;
@@ -50,6 +50,26 @@ public abstract class CommandControllerBase(
         if (employeeId is null) return Forbid();
 
         if (!await operatorChecker.IsIncidentCommanderAsync(employeeId.Value)) return Forbid();
+
+        return null;
+    }
+
+    // Cancel is the one carve-out that breaks the usual "Incident Commander
+    // can do everything a baseline operator can, plus more" hierarchy: an
+    // incident cancelled outright was raised in error, and that call
+    // belongs to Control Room / Command Support -- the desk staff actually
+    // triaging inbound calls, often before an Incident Commander is even
+    // assigned -- not to the Commander. Deliberately excludes the
+    // Commander tier rather than just not requiring it.
+    protected async Task<ActionResult?> RequireCancelAccessAsync()
+    {
+        if (await operatorChecker.IsBootstrappingAsync()) return null;
+
+        var employeeId = await currentEmployeeAccessor.GetEmployeeIdAsync();
+        if (employeeId is null) return Forbid();
+
+        var tier = await operatorChecker.GetTierAsync(employeeId.Value);
+        if (tier is null || tier == CommandOperatorTier.IncidentCommander) return Forbid();
 
         return null;
     }

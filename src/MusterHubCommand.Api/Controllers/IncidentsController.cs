@@ -63,13 +63,10 @@ public class IncidentsController(
     [HttpPatch("{id}")]
     public async Task<ActionResult<IncidentDto>> Update(Guid id, UpdateIncidentRequest request)
     {
-        // Closing is elevated (same tier as Cancel below); any other field
-        // on this same generic PATCH -- description, address, etc. -- is
-        // still just baseline operator access.
-        var denied = request.Status == IncidentStatus.Closed
-            ? await RequireIncidentCommanderAsync()
-            : await RequireOperatorAsync();
-        if (denied is ActionResult result) return result;
+        // Closing is baseline operator access, same as every other field on
+        // this generic PATCH -- description, address, etc. Cancel below is
+        // the one that stays Incident Commander-only.
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
 
         try
         {
@@ -82,19 +79,19 @@ public class IncidentsController(
     [HttpDelete("{id}")]
     public async Task<IActionResult> Cancel(Guid id)
     {
-        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
+        if (await RequireCancelAccessAsync() is ActionResult denied) return denied;
 
         var updated = await incidentService.CancelAsync(OrganisationId, id);
         return updated is null ? NotFound() : NoContent();
     }
 
     // Its own endpoint rather than folded into the generic PATCH above --
-    // same IncidentCommander gate PATCH already applies for Status=Closed,
-    // but this is the one path that also carries the structured close-out.
+    // same baseline operator gate PATCH applies for Status=Closed, but this
+    // is the one path that also carries the structured close-out.
     [HttpPost("{id}/close")]
     public async Task<ActionResult<IncidentDto>> Close(Guid id, CloseIncidentRequest request)
     {
-        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
+        if (await RequireOperatorAsync() is ActionResult denied) return denied;
 
         try
         {
