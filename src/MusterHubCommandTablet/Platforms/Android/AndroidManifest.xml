@@ -19,7 +19,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="37" />
     <!-- Android 11+ package-visibility rules hide other apps' intent
          filters by default, so without this MediaPicker's own check for
          "is there a camera app installed" comes back empty even when one
