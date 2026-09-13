@@ -79,7 +79,7 @@ public class IncidentsController(
     [HttpDelete("{id}")]
     public async Task<IActionResult> Cancel(Guid id)
     {
-        if (await RequireIncidentCommanderAsync() is ActionResult denied) return denied;
+        if (await RequireCancelAccessAsync() is ActionResult denied) return denied;
 
         var updated = await incidentService.CancelAsync(OrganisationId, id);
         return updated is null ? NotFound() : NoContent();

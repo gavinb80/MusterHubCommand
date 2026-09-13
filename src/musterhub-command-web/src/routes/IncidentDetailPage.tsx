@@ -1637,10 +1637,18 @@ export function IncidentDetailPage() {
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<MeResponse>("/me") });
-  const canManageIncident = meQuery.data?.isIncidentCommander ?? false;
   // Close is baseline operator access (matches the API's RequireOperatorAsync
-  // gate on POST /close) -- Cancel stays Incident Commander-only below.
+  // gate on POST /close).
   const canClose = meQuery.data?.isOperator ?? false;
+  // Cancel is the inverse of the usual hierarchy: Control Room and Command
+  // Support get it, Incident Commander specifically doesn't (matches the
+  // API's RequireCancelAccessAsync -- see that method's own comment for
+  // why). isBootstrapping still short-circuits to true, same as every
+  // other gate here, since the founder needs to be able to do everything
+  // before any real operator grant exists.
+  const canCancel = (meQuery.data?.isBootstrapping ?? false) || (
+    (meQuery.data?.isOperator ?? false) && !(meQuery.data?.isIncidentCommander ?? false)
+  );
 
   // Same cache key LocationPanel's own geofence query uses further down --
   // shares that result rather than firing a second request, just to gate
@@ -1747,7 +1755,7 @@ export function IncidentDetailPage() {
               Reopen
             </button>
           )}
-          {incident.status !== "Cancelled" && canManageIncident && (
+          {incident.status !== "Cancelled" && canCancel && (
             <button
               type="button"
               onClick={() => {

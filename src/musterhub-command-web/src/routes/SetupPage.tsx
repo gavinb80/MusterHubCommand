@@ -461,9 +461,10 @@ function OperatorsTab() {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-body text-(--content-secondary)">
-        Control Room and Command Support both create/edit/close incidents, push updates, and manage devices and
-        integration keys. Incident Commander adds cancelling incidents, managing sectors and hierarchy, and
-        granting/revoking operators.
+        Control Room and Command Support both create/edit/close/cancel incidents, push updates, and manage devices
+        and integration keys. Incident Commander adds managing sectors and hierarchy and granting/revoking
+        operators, but not cancelling, that stays with Control Room and Command Support, since a cancelled
+        incident was raised in error and that call is usually made before a Commander is even assigned.
         {!canManage && " Only an Incident Commander can change these."}
       </p>
       {employeesQuery.isSuccess && employeesQuery.data.length === 0 && (

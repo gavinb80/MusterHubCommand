@@ -9,12 +9,15 @@ namespace MusterHubCommand.Api.Tests;
 // (elevated) -- see CommandOperator's own comment for the three-tier
 // design; Control Room and Command Support are named distinctly (Fire
 // Control desk staff vs. on-scene admin/logging support) but carry the
-// same permissions today. Bootstrap already grants Commander-level access
-// (BootstrapTests' founder self-grant, itself a Commander-gated
-// SetOperator call, only succeeds because of that), so this file is purely
-// about the tier split once an org is past bootstrap: Seed.OperatorAPerson
-// is an Incident Commander, Seed.CommandSupportAPerson/ControlRoomAPerson
-// are the two baseline tiers, all in the same org.
+// same permissions today. Cancel is the one exception to "Commander can do
+// everything a baseline operator can" -- it's withheld from the Commander
+// tier specifically (see RequireCancelAccessAsync). Bootstrap already
+// grants Commander-level access (BootstrapTests' founder self-grant,
+// itself a Commander-gated SetOperator call, only succeeds because of
+// that), so this file is purely about the tier split once an org is past
+// bootstrap: Seed.OperatorAPerson is an Incident Commander,
+// Seed.CommandSupportAPerson/ControlRoomAPerson are the two baseline
+// tiers, all in the same org.
 [Collection("Api")]
 public class CommandOperatorTierTests(CommandApiFactory factory)
 {
@@ -34,17 +37,20 @@ public class CommandOperatorTierTests(CommandApiFactory factory)
         return (await response.Content.ReadFromJsonAsync<IncidentDto>(ClientExtensions.Json))!;
     }
 
+    // Cancel is the one action inverted from the usual hierarchy -- see
+    // RequireCancelAccessAsync's own comment for why an incident raised in
+    // error is a Control Room / Command Support call, not the Commander's.
     [Fact]
-    public async Task Cancelling_an_incident_requires_Incident_Commander()
+    public async Task Cancelling_an_incident_is_denied_to_Incident_Commander_specifically()
     {
         await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-CANCEL-1"));
         var incident = await GetByReferenceAsync("TIER-CANCEL-1");
 
-        var deniedForSupport = await _supportA.DeleteAsync($"/api/incidents/{incident.Id}");
-        Assert.Equal(HttpStatusCode.Forbidden, deniedForSupport.StatusCode);
+        var deniedForCommander = await _commanderA.DeleteAsync($"/api/incidents/{incident.Id}");
+        Assert.Equal(HttpStatusCode.Forbidden, deniedForCommander.StatusCode);
 
-        var allowedForCommander = await _commanderA.DeleteAsync($"/api/incidents/{incident.Id}");
-        Assert.Equal(HttpStatusCode.NoContent, allowedForCommander.StatusCode);
+        var allowedForSupport = await _supportA.DeleteAsync($"/api/incidents/{incident.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, allowedForSupport.StatusCode);
     }
 
     [Fact]
@@ -53,10 +59,12 @@ public class CommandOperatorTierTests(CommandApiFactory factory)
         await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-CONTROLROOM-1"));
         var incident = await GetByReferenceAsync("TIER-CONTROLROOM-1");
 
-        var deniedCancel = await _controlRoomA.DeleteAsync($"/api/incidents/{incident.Id}");
-        Assert.Equal(HttpStatusCode.Forbidden, deniedCancel.StatusCode);
+        var allowedCancel = await _controlRoomA.DeleteAsync($"/api/incidents/{incident.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, allowedCancel.StatusCode);
 
-        var allowedPatch = await _controlRoomA.PatchAsJsonAsync($"/api/incidents/{incident.Id}",
+        await _integrationA.PostAsJsonAsync("/api/integrations/incidents", NewIncident("TIER-CONTROLROOM-2"));
+        var secondIncident = await GetByReferenceAsync("TIER-CONTROLROOM-2");
+        var allowedPatch = await _controlRoomA.PatchAsJsonAsync($"/api/incidents/{secondIncident.Id}",
             new UpdateIncidentRequest(null, "Confirmed working fire", null, null, null, null, null));
         Assert.Equal(HttpStatusCode.OK, allowedPatch.StatusCode);
     }
